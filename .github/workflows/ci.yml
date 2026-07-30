@@ -70,3 +70,31 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm audit --audit-level=high
+
+  garmin:
+    needs: changes
+    if: needs.changes.outputs.garmin == 'true'
+    runs-on: ubuntu-latest
+    # Requires GARMIN_USERNAME/GARMIN_PASSWORD secrets (your own Garmin
+    # Connect developer account) - the SDK can't be downloaded without
+    # agreeing to Garmin's license as a real account. Until those secrets
+    # exist this job will fail at the download step; that's expected, not
+    # a sign anything else is broken.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install connect-iq-sdk-manager
+        run: curl -s https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
+      - name: Download SDK and target device
+        env:
+          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          ./bin/connect-iq-sdk-manager sdk agree
+          ./bin/connect-iq-sdk-manager sdk download
+          ./bin/connect-iq-sdk-manager device download --manifest=garmin-app/manifest.xml
+          echo "$(./bin/connect-iq-sdk-manager sdk current-path --bin)" >> "$GITHUB_PATH"
+      - name: Generate a throwaway signing key (compile-check only, never for publishing)
+        run: openssl genrsa -out garmin-app/ci_developer_key.pem 4096
+      - name: Compile
+        working-directory: garmin-app
+        run: monkeyc -f monkey.jungle -d vivoactive6 -y ci_developer_key.pem -o /tmp/lumio.prg -w

@@ -33,6 +33,9 @@ garmin-app/*.prg
 garmin-app/*.iq
 garmin-app/bin/*.debug.xml
 
+# Local-only project notes - not for a public repo
+CLAUDE.md
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

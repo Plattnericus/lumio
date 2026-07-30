@@ -1,8 +1,12 @@
-import { api, downloadUrl, thumbnailUrl, uploadFile } from "./api.js";
+import { api, downloadUrl, previewUrl, thumbnailUrl, uploadFile } from "./api.js";
+import { wirePasswordToggles } from "./setup.js";
 import {
   iconBrand,
+  iconChevronLeft,
+  iconChevronRight,
   iconClose,
   iconDownload,
+  iconEye,
   iconForExtension,
   iconGear,
   iconKey,
@@ -37,11 +41,16 @@ export function mountDashboard(root, session, onLogout) {
     role: session.role,
     scope: "mine",
     filter: "",
+    currentFiles: [],
   };
+  let lightboxKeyHandler = null;
+  let modalKeyHandler = null;
 
   render();
 
   function render() {
+    closeLightbox();
+    closeModal();
     root.innerHTML = `
       <aside class="sidebar">
         <div class="sidebar-brand"><div class="brand">${iconBrand}<span>Lumio</span></div></div>
@@ -85,6 +94,7 @@ export function mountDashboard(root, session, onLogout) {
 
       <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp,.pdf,.docx,.pptx" multiple hidden />
       <div id="modal-root"></div>
+      <div id="lightbox-root"></div>
       <div id="toast-root"></div>
     `;
 
@@ -132,6 +142,7 @@ export function mountDashboard(root, session, onLogout) {
     grid.innerHTML = `<p class="empty-state">Loading...</p>`;
     try {
       const files = await api.listFiles(state.filter, state.scope);
+      state.currentFiles = files;
       renderGrid(files);
     } catch (err) {
       grid.innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
@@ -157,6 +168,9 @@ export function mountDashboard(root, session, onLogout) {
     grid.querySelectorAll("[data-share]").forEach((btn) => {
       btn.addEventListener("click", () => openShareModal(Number(btn.dataset.share)));
     });
+    grid.querySelectorAll("[data-open-lightbox]").forEach((el) => {
+      el.addEventListener("click", () => openLightbox(Number(el.dataset.openLightbox)));
+    });
   }
 
   function fileCardHtml(file) {
@@ -178,16 +192,89 @@ export function mountDashboard(root, session, onLogout) {
         ? `Shared by ${escapeHtml(file.sharedBy)}`
         : `${formatBytes(file.sizeBytes)} &middot; ${formatDate(file.uploadedAt)}`;
 
+    // Only real photos open the gallery view - a PDF/Word/PowerPoint icon
+    // has nothing bigger to show.
+    const thumbAttr = file.hasThumbnail ? ` data-open-lightbox="${file.id}"` : "";
+
     return `
       <div class="file-card">
         <div class="file-actions">${actions}</div>
-        <div class="file-thumb">${thumb}</div>
+        <div class="file-thumb"${thumbAttr}>${thumb}</div>
         <div class="file-meta">
           <div class="file-name" title="${escapeHtml(file.originalName)}">${escapeHtml(file.originalName)}</div>
           <div class="file-sub">${sub}</div>
         </div>
       </div>
     `;
+  }
+
+  // ---------- Gallery lightbox ----------
+
+  function openLightbox(fileId) {
+    const images = state.currentFiles.filter((f) => f.hasThumbnail);
+    const index = images.findIndex((f) => f.id === fileId);
+    if (index === -1) return;
+    renderLightbox(images, index);
+  }
+
+  function renderLightbox(images, index) {
+    const file = images[index];
+    const canManage = state.scope !== "shared";
+
+    root.querySelector("#lightbox-root").innerHTML = `
+      <div class="lightbox-backdrop" id="lightbox-backdrop">
+        <button class="lightbox-close" id="lightbox-close" title="Close">${iconClose}</button>
+        ${index > 0 ? `<button class="lightbox-nav lightbox-prev" id="lightbox-prev" title="Previous">${iconChevronLeft}</button>` : ""}
+        <div class="lightbox-stage">
+          <img src="${previewUrl(file.id)}" alt="${escapeHtml(file.originalName)}" />
+        </div>
+        ${index < images.length - 1 ? `<button class="lightbox-nav lightbox-next" id="lightbox-next" title="Next">${iconChevronRight}</button>` : ""}
+        <div class="lightbox-footer">
+          <div class="lightbox-name">${escapeHtml(file.originalName)}</div>
+          <div class="lightbox-actions">
+            <a class="btn btn-icon" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
+            ${canManage ? `<button class="btn btn-icon" id="lightbox-share" title="Share">${iconShare}</button>` : ""}
+            ${canManage ? `<button class="btn btn-icon btn-danger" id="lightbox-delete" title="Delete">${iconTrash}</button>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+
+    root.querySelector("#lightbox-close").addEventListener("click", closeLightbox);
+    root.querySelector("#lightbox-backdrop").addEventListener("click", (e) => {
+      if (e.target.id === "lightbox-backdrop") closeLightbox();
+    });
+    root.querySelector("#lightbox-prev")?.addEventListener("click", () => renderLightbox(images, index - 1));
+    root.querySelector("#lightbox-next")?.addEventListener("click", () => renderLightbox(images, index + 1));
+    root.querySelector("#lightbox-share")?.addEventListener("click", () => {
+      closeLightbox();
+      openShareModal(file.id);
+    });
+    root.querySelector("#lightbox-delete")?.addEventListener("click", () => {
+      closeLightbox();
+      confirmDelete(file.id);
+    });
+
+    if (lightboxKeyHandler) document.removeEventListener("keydown", lightboxKeyHandler);
+    lightboxKeyHandler = (e) => {
+      if (e.key === "Escape") {
+        closeLightbox();
+      } else if (e.key === "ArrowLeft" && index > 0) {
+        renderLightbox(images, index - 1);
+      } else if (e.key === "ArrowRight" && index < images.length - 1) {
+        renderLightbox(images, index + 1);
+      }
+    };
+    document.addEventListener("keydown", lightboxKeyHandler);
+  }
+
+  function closeLightbox() {
+    const lightboxRoot = root.querySelector("#lightbox-root");
+    if (lightboxRoot) lightboxRoot.innerHTML = "";
+    if (lightboxKeyHandler) {
+      document.removeEventListener("keydown", lightboxKeyHandler);
+      lightboxKeyHandler = null;
+    }
   }
 
   async function confirmDelete(id) {
@@ -444,15 +531,35 @@ export function mountDashboard(root, session, onLogout) {
     openModal(`
       <h2>Change password</h2>
       <p>Choose a new password for your own account.</p>
-      <div class="field"><label for="acct-current">Current password</label><input id="acct-current" type="password" autocomplete="current-password" /></div>
-      <div class="field"><label for="acct-new">New password</label><input id="acct-new" type="password" autocomplete="new-password" minlength="12" /></div>
-      <div class="field"><label for="acct-confirm">Confirm new password</label><input id="acct-confirm" type="password" autocomplete="new-password" /></div>
+      <div class="field">
+        <label for="acct-current">Current password</label>
+        <div class="password-field">
+          <input id="acct-current" type="password" autocomplete="current-password" />
+          <button type="button" class="password-toggle" data-toggle="acct-current" title="Show password">${iconEye}</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="acct-new">New password</label>
+        <div class="password-field">
+          <input id="acct-new" type="password" autocomplete="new-password" minlength="12" />
+          <button type="button" class="password-toggle" data-toggle="acct-new" title="Show password">${iconEye}</button>
+        </div>
+        <div class="field-hint">At least 12 characters.</div>
+      </div>
+      <div class="field">
+        <label for="acct-confirm">Confirm new password</label>
+        <div class="password-field">
+          <input id="acct-confirm" type="password" autocomplete="new-password" />
+          <button type="button" class="password-toggle" data-toggle="acct-confirm" title="Show password">${iconEye}</button>
+        </div>
+      </div>
       <p class="error-text" id="acct-error"></p>
       <div class="modal-actions">
         <button class="btn" id="cancel-acct">Cancel</button>
         <button class="btn btn-primary" id="save-acct">Save</button>
       </div>
     `);
+    wirePasswordToggles(root);
     root.querySelector("#cancel-acct").addEventListener("click", closeModal);
     root.querySelector("#save-acct").addEventListener("click", async () => {
       const errorEl = root.querySelector("#acct-error");
@@ -533,29 +640,50 @@ export function mountDashboard(root, session, onLogout) {
     }
 
     content.innerHTML = `
-      <div class="inline-form">
-        <input type="text" id="new-user-username" placeholder="Username" autocomplete="off" />
-        <input type="password" id="new-user-password" placeholder="Password (12+ characters)" autocomplete="new-password" />
-        <button class="btn btn-secondary" id="new-user-submit">Add</button>
+      <div class="field">
+        <label for="new-user-username">Username</label>
+        <input type="text" id="new-user-username" autocomplete="off" pattern="[a-zA-Z0-9._-]{3,32}" maxlength="32" />
+        <div class="field-hint">3-32 characters: letters, numbers, dots, hyphens, or underscores. Tell them this exact spelling - they'll need it to sign in.</div>
       </div>
+      <div class="inline-form">
+        <div class="password-field" style="flex:1;">
+          <input type="password" id="new-user-password" placeholder="Password (12+ characters)" autocomplete="new-password" />
+          <button type="button" class="password-toggle" data-toggle="new-user-password" title="Show password">${iconEye}</button>
+        </div>
+        <div class="password-field" style="flex:1;">
+          <input type="password" id="new-user-confirm" placeholder="Confirm password" autocomplete="new-password" />
+          <button type="button" class="password-toggle" data-toggle="new-user-confirm" title="Show password">${iconEye}</button>
+        </div>
+      </div>
+      <button class="btn btn-secondary" id="new-user-submit" style="width:100%;margin-top:10px;">Add user</button>
       <p class="error-text" id="admin-users-error"></p>
       <div class="row-list" id="user-list"><p class="empty-state" style="padding:20px;">Loading...</p></div>
     `;
     content.querySelector("#new-user-submit").addEventListener("click", submitNewUser);
+    wirePasswordToggles(content);
     await loadUsers();
   }
 
   async function submitNewUser() {
     const usernameEl = root.querySelector("#new-user-username");
     const passwordEl = root.querySelector("#new-user-password");
+    const confirmEl = root.querySelector("#new-user-confirm");
     const errorEl = root.querySelector("#admin-users-error");
     errorEl.textContent = "";
 
+    const username = usernameEl.value.trim();
+    if (passwordEl.value !== confirmEl.value) {
+      errorEl.textContent = "Passwords do not match";
+      return;
+    }
+
     try {
-      await api.createUser(usernameEl.value.trim(), passwordEl.value, state.csrfToken);
+      await api.createUser(username, passwordEl.value, state.csrfToken);
       usernameEl.value = "";
       passwordEl.value = "";
+      confirmEl.value = "";
       await loadUsers();
+      showToast(`Account "${username}" created - share the username and password with them so they can sign in.`);
     } catch (err) {
       errorEl.textContent = err.message;
     }
@@ -626,10 +754,25 @@ export function mountDashboard(root, session, onLogout) {
     root.querySelector("#modal-backdrop").addEventListener("click", (e) => {
       if (e.target.id === "modal-backdrop") closeModal();
     });
+
+    if (modalKeyHandler) document.removeEventListener("keydown", modalKeyHandler);
+    modalKeyHandler = (e) => {
+      if (e.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", modalKeyHandler);
+
+    // First real input in the modal, if any - lets a keyboard/screen-
+    // reader user start typing immediately instead of having to tab in.
+    root.querySelector(".modal input, .modal button:not(#modal-close)")?.focus();
   }
 
   function closeModal() {
-    root.querySelector("#modal-root").innerHTML = "";
+    const modalRoot = root.querySelector("#modal-root");
+    if (modalRoot) modalRoot.innerHTML = "";
+    if (modalKeyHandler) {
+      document.removeEventListener("keydown", modalKeyHandler);
+      modalKeyHandler = null;
+    }
   }
 
   function showToast(message, isError) {

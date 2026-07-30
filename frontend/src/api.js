@@ -79,6 +79,10 @@ export function thumbnailUrl(id) {
   return `${API_BASE}/files/${id}/thumbnail`;
 }
 
+export function previewUrl(id) {
+  return `${API_BASE}/files/${id}/preview`;
+}
+
 // XHR, not fetch: it's the only one of the two that reports upload
 // progress, which the drop-zone UI needs.
 export function uploadFile(file, csrfToken, onProgress) {

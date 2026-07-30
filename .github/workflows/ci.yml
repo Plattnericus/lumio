@@ -70,3 +70,43 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm audit --audit-level=high
+
+  garmin:
+    needs: changes
+    if: needs.changes.outputs.garmin == 'true'
+    runs-on: ubuntu-latest
+    # Requires GARMIN_USERNAME/GARMIN_PASSWORD secrets (your own Garmin
+    # Connect developer account) - the SDK can't be downloaded without
+    # agreeing to Garmin's license as a real account.
+    #
+    # timeout-minutes matters here specifically: `login` without real
+    # credentials doesn't fail fast, it hangs trying an interactive OAuth
+    # flow with no TTY to complete it. Confirmed by hand - a run with
+    # empty secrets sat "in_progress" for minutes with no further log
+    # output until cancelled. The explicit credential check below turns
+    # that hang into an immediate, clear failure instead.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install connect-iq-sdk-manager
+        run: curl -s https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
+      - name: Download SDK and target device
+        env:
+          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          if [ -z "$GARMIN_USERNAME" ] || [ -z "$GARMIN_PASSWORD" ]; then
+            echo "::error::GARMIN_USERNAME/GARMIN_PASSWORD secrets are not set - see README's Actions secrets table. Failing fast instead of hanging on an interactive login."
+            exit 1
+          fi
+          connect-iq-sdk-manager agreement accept
+          connect-iq-sdk-manager login
+          connect-iq-sdk-manager sdk download ">=6.0.0"
+          connect-iq-sdk-manager sdk set ">=6.0.0"
+          connect-iq-sdk-manager device download --manifest=garmin-app/manifest.xml
+          echo "$(connect-iq-sdk-manager sdk current-path --bin)" >> "$GITHUB_PATH"
+      - name: Generate a throwaway signing key (compile-check only, never for publishing)
+        run: openssl genrsa -out garmin-app/ci_developer_key.pem 4096
+      - name: Compile
+        working-directory: garmin-app
+        run: monkeyc -f monkey.jungle -d vivoactive6 -y ci_developer_key.pem -o /tmp/lumio.prg -w

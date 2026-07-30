@@ -84,24 +84,20 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install connect-iq-sdk-manager
         run: curl -s https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
-      - name: DEBUG - discover real CLI surface
-        env:
-          GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
-          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
-        run: |
-          echo "--- agreement --help ---"
-          connect-iq-sdk-manager agreement --help
-          echo "--- login --help ---"
-          connect-iq-sdk-manager login --help
-          echo "--- sdk list (no args) ---"
-          connect-iq-sdk-manager sdk list || true
       - name: Download SDK and target device
+        # Real CLI surface confirmed from the tool's own --help output
+        # (not the docs) after two earlier attempts guessed wrong:
+        # "sdk agree" isn't a command (it's "agreement accept"), login is
+        # its own top-level command, and "sdk download" requires a
+        # version/semver-range argument.
         env:
           GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
         run: |
-          connect-iq-sdk-manager sdk agree
-          connect-iq-sdk-manager sdk download
+          connect-iq-sdk-manager agreement accept
+          connect-iq-sdk-manager login
+          connect-iq-sdk-manager sdk download ">=6.0.0"
+          connect-iq-sdk-manager sdk set ">=6.0.0"
           connect-iq-sdk-manager device download --manifest=garmin-app/manifest.xml
           echo "$(connect-iq-sdk-manager sdk current-path --bin)" >> "$GITHUB_PATH"
       - name: Generate a throwaway signing key (compile-check only, never for publishing)

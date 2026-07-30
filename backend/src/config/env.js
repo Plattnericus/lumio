@@ -1,3 +1,4 @@
+import path from "node:path";
 import "dotenv/config";
 
 const required = ["SESSION_SECRET"];
@@ -9,6 +10,9 @@ function readEnv() {
     sessionSecret: process.env.SESSION_SECRET,
     dbPath: process.env.DB_PATH || "./data/lumio.sqlite",
     uploadDir: process.env.UPLOAD_DIR || "./data/uploads",
+    setupTokenPath:
+      process.env.SETUP_TOKEN_PATH ||
+      path.join(path.dirname(process.env.DB_PATH || "./data/lumio.sqlite"), "setup-token.txt"),
     maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 25),
     loginRateLimitMax: Number(process.env.LOGIN_RATE_LIMIT_MAX || 5),
     loginLockoutMinutes: Number(process.env.LOGIN_LOCKOUT_MINUTES || 15),

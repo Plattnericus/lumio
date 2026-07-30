@@ -11,6 +11,7 @@ const DUMMY_HASH = await argon2.hash("not-a-real-password", { type: argon2.argon
 
 const getUserByUsername = db.prepare("SELECT * FROM users WHERE username = ?");
 const getUserById = db.prepare("SELECT * FROM users WHERE id = ?");
+const countUsers = db.prepare("SELECT COUNT(*) as count FROM users");
 const insertUser = db.prepare(
   "INSERT INTO users (username, password_hash, role) VALUES (@username, @passwordHash, @role)"
 );
@@ -26,10 +27,49 @@ const setTotpSecret = db.prepare(
 const clearTotp = db.prepare(
   "UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?"
 );
+const updatePasswordHash = db.prepare("UPDATE users SET password_hash = ? WHERE id = ?");
 
 export async function createAccount(username, password, role = "user") {
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   insertUser.run({ username, passwordHash, role });
+}
+
+const MIN_PASSWORD_LENGTH = 12;
+
+export function validateCredentials(username, password) {
+  if (typeof username !== "string" || username.trim().length === 0) {
+    return "Username is required";
+  }
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+  }
+  return null;
+}
+
+// Hash first, touch the database only in one uninterrupted synchronous
+// block after that - better-sqlite3 is synchronous and Node is
+// single-threaded, so nothing can interleave between the count check and
+// the insert. That's what actually makes this race-safe against two
+// concurrent setup requests, not the db.transaction() wrapper itself
+// (which is here for self-documentation - there's no async gap for it to
+// protect against).
+const createAdminIfNoneExists = db.transaction((username, passwordHash) => {
+  if (countUsers.get().count > 0) return false;
+  insertUser.run({ username, passwordHash, role: "admin" });
+  return true;
+});
+
+export async function createInitialAdminAccount(username, password) {
+  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+  return createAdminIfNoneExists(username, passwordHash);
+}
+
+export function findUserByUsername(username) {
+  return getUserByUsername.get(username);
+}
+
+export function hasAnyUsers() {
+  return countUsers.get().count > 0;
 }
 
 /**
@@ -89,6 +129,11 @@ export async function confirmTotpEnrollment(userId, secret, token) {
 
 export function disableTotp(userId) {
   clearTotp.run(userId);
+}
+
+export async function changePassword(userId, newPassword) {
+  const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+  updatePasswordHash.run(passwordHash, userId);
 }
 
 // Exported for tests that need a real TOTP code for a given secret.

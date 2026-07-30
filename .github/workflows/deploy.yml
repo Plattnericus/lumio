@@ -19,14 +19,27 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Check if auto-update is enabled
+        id: autoupdate
+        run: |
+          ENABLED=$(ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.VPS_HOST }}" \
+            'cd /root/lumio/backend && node src/scripts/check-auto-update.js')
+          echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
+
+      - name: Skipped - auto-update disabled
+        if: steps.autoupdate.outputs.enabled != 'true'
+        run: echo "::notice::Auto-update is disabled in Settings - skipping deploy. Enable it in the admin panel to let releases deploy automatically."
+
       - name: Record the currently deployed ref (rollback target)
         id: previous
+        if: steps.autoupdate.outputs.enabled == 'true'
         run: |
           PREV_REF=$(ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.VPS_HOST }}" \
             'cd /root/lumio && git rev-parse HEAD')
           echo "ref=$PREV_REF" >> "$GITHUB_OUTPUT"
 
       - name: Deploy the new release
+        if: steps.autoupdate.outputs.enabled == 'true'
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.VPS_HOST }}" bash -s <<'REMOTE'
             set -e
@@ -40,6 +53,7 @@ jobs:
 
       - name: Health check
         id: health
+        if: steps.autoupdate.outputs.enabled == 'true'
         run: |
           sleep 5
           for i in 1 2 3 4 5; do

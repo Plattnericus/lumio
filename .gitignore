@@ -1,0 +1,41 @@
+# Secrets & env
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Frontend build output
+frontend/dist/
+
+# Backend runtime data
+backend/data/
+backend/uploads/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Logs
+*.log
+logs/
+
+# Certificates & keys - never belong in the repo
+*.pem
+*.key
+*.crt
+*.csr
+letsencrypt/
+
+# Connect IQ build artifacts
+garmin-app/bin/
+garmin-app/*.prg
+garmin-app/*.iq
+garmin-app/bin/*.debug.xml
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

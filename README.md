@@ -78,7 +78,16 @@ npm run dev   # served separately in dev; nginx serves frontend/dist in prod
 ### garmin-app/
 
 Open `garmin-app/` in the Connect IQ SDK / VS Code plugin and run it against
-the Vivoactive 6 simulator.
+the Vivoactive 6 simulator. Before it can reach your server, set two app
+settings (Connect IQ simulator: App Settings, or on a real watch: the
+widget's settings in Garmin Connect Mobile) - neither is hardcoded:
+
+- **Lumio server URL** - e.g. `https://your-server:8444`
+- **Pairing code** - generated from the dashboard's "Pair Garmin watch"
+  button, then press Select on the watch to exchange it for a token
+
+The app stores the resulting device token locally and won't ask for the
+code again unless that storage is cleared.
 
 ## Environment variables
 
@@ -122,6 +131,7 @@ the repo's Settings → Secrets and variables → Actions.
 | `DEPLOY_SSH_KEY` | Private half of the deploy keypair (generated on the VPS - see Deployment below). |
 | `DEPLOY_SSH_USER` | The account the deploy key logs in as on the VPS. |
 | `VPS_HOST` | The VPS's public IP or hostname. |
+| `GARMIN_USERNAME` / `GARMIN_PASSWORD` | Your own Garmin Connect developer account, used only to download the Connect IQ SDK in the `garmin` CI job. Without these the compile-check step fails at the download - that's expected until they're set, not a sign the app itself is broken. |
 
 ## Deployment
 

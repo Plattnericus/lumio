@@ -6,6 +6,13 @@ on:
   push:
     branches: [main]
 
+# dorny/paths-filter calls the PR-files API to compute changes; without
+# this it fails with "Resource not accessible by integration" on repos
+# where the default token permissions aren't read-write.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   changes:
     runs-on: ubuntu-latest

@@ -89,10 +89,10 @@ jobs:
           GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
         run: |
-          ./bin/connect-iq-sdk-manager sdk agree
-          ./bin/connect-iq-sdk-manager sdk download
-          ./bin/connect-iq-sdk-manager device download --manifest=garmin-app/manifest.xml
-          echo "$(./bin/connect-iq-sdk-manager sdk current-path --bin)" >> "$GITHUB_PATH"
+          connect-iq-sdk-manager sdk agree
+          connect-iq-sdk-manager sdk download
+          connect-iq-sdk-manager device download --manifest=garmin-app/manifest.xml
+          echo "$(connect-iq-sdk-manager sdk current-path --bin)" >> "$GITHUB_PATH"
       - name: Generate a throwaway signing key (compile-check only, never for publishing)
         run: openssl genrsa -out garmin-app/ci_developer_key.pem 4096
       - name: Compile

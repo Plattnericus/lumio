@@ -26,7 +26,17 @@ export function createApp() {
   }
 
   app.use(helmet());
-  app.use(pinoHttp({ logger, autoLogging: !isProduction }));
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: !isProduction,
+      // pino-http's default req serializer logs the raw socket address,
+      // which behind nginx is just nginx's own loopback IP - not useful
+      // for fail2ban or anything else that needs the real client. req.ip
+      // is Express's trust-proxy-aware value instead.
+      customProps: (req) => ({ clientIp: req.ip }),
+    })
+  );
   app.use(express.json({ limit: "1mb" }));
 
   app.use(

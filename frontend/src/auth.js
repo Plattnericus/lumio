@@ -3,7 +3,6 @@ import { iconBrand } from "./icons.js";
 
 export function mountLogin(root, onSuccess) {
   let stage = "credentials"; // or "totp"
-  let pendingUsername = "";
 
   render();
 
@@ -56,7 +55,6 @@ export function mountLogin(root, onSuccess) {
         const result = await api.login(username, password);
 
         if (result.totpRequired) {
-          pendingUsername = username;
           stage = "totp";
           render();
           return;

@@ -32,3 +32,11 @@ describe("GET /api/health", () => {
     expect(res.body.status).toBe("ok");
   });
 });
+
+describe("fresh database schema", () => {
+  it("has the role column from schema.sql directly, with no rows to promote", () => {
+    const columns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+    expect(columns).toContain("role");
+    expect(db.prepare("SELECT COUNT(*) as count FROM users").get().count).toBe(0);
+  });
+});

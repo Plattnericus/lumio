@@ -9,7 +9,8 @@ class ImageListDelegate extends WatchUi.Menu2InputDelegate {
     function onSelect(item as WatchUi.MenuItem) as Void {
         var id = item.getId();
         if (id instanceof Number) {
-            WatchUi.pushView(new FullscreenImageView(id as Number), new FullscreenImageDelegate(), WatchUi.SLIDE_LEFT);
+            var view = new FullscreenImageView(id as Number);
+            WatchUi.pushView(view, new FullscreenImageDelegate(view), WatchUi.SLIDE_LEFT);
         }
     }
 }

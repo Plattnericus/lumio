@@ -41,10 +41,15 @@ export async function createAccount(username, password, role = "user") {
 }
 
 const MIN_PASSWORD_LENGTH = 12;
+// 3-32 chars, letters/digits/dot/underscore/hyphen only - rejects
+// whitespace-only names, stray unicode, and anything that would be
+// confusing to type back in correctly (the whole point of this check
+// is that whoever's handed this username can retype it without guessing).
+export const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
 
 export function validateCredentials(username, password) {
-  if (typeof username !== "string" || username.trim().length === 0) {
-    return "Username is required";
+  if (typeof username !== "string" || !USERNAME_PATTERN.test(username)) {
+    return "Username must be 3-32 characters: letters, numbers, dots, hyphens, or underscores only";
   }
   if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
     return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;

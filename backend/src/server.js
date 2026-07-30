@@ -3,6 +3,9 @@ import { createApp } from "./app.js";
 import { db } from "./db/index.js";
 import { env } from "./config/env.js";
 import { logger } from "./logger.js";
+import { ensureSetupToken } from "./services/setupTokenService.js";
+
+ensureSetupToken();
 
 const app = createApp();
 const server = http.createServer(app);

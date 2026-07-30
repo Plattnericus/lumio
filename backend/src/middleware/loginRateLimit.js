@@ -18,3 +18,13 @@ export const pairingExchangeRateLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many attempts, try again later" },
 });
+
+// Bounds argon2-hash CPU cost from repeated doomed setup attempts - this
+// only ever matters for the first few minutes of a server's life.
+export const setupRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts, try again later" },
+});

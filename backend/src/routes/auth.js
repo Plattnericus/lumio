@@ -3,9 +3,11 @@ import { Router } from "express";
 import {
   attemptLogin,
   beginTotpEnrollment,
+  changePassword,
   confirmTotpEnrollment,
   disableTotp,
   getUser,
+  validateCredentials,
   verifyTotpToken,
 } from "../services/authService.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -123,6 +125,30 @@ authRouter.post("/totp/disable", requireAuth, csrfProtection, async (req, res, n
     }
     disableTotp(user.id);
     res.json({ enabled: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// An admin sets a new user's initial password directly - this is the
+// only way that account can ever change it afterward.
+authRouter.post("/password", requireAuth, csrfProtection, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    const user = getUser(req.session.userId);
+    const valid =
+      typeof currentPassword === "string" && (await argon2.verify(user.password_hash, currentPassword));
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid password" });
+    }
+
+    const validationError = validateCredentials(user.username, newPassword);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    await changePassword(user.id, newPassword);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

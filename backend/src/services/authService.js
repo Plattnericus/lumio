@@ -2,6 +2,7 @@ import argon2 from "argon2";
 import { generate, generateSecret, generateURI, verify } from "otplib";
 import { db } from "../db/index.js";
 import { env } from "../config/env.js";
+import { deleteFile, listFiles as listUserFiles } from "./uploadService.js";
 
 // Verified against a dummy hash when the username doesn't exist, so a login
 // attempt for a nonexistent account takes roughly the same time as one for
@@ -28,6 +29,11 @@ const clearTotp = db.prepare(
   "UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?"
 );
 const updatePasswordHash = db.prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+const listAllUsers = db.prepare(
+  "SELECT id, username, role, totp_enabled, created_at FROM users ORDER BY created_at"
+);
+const countAdmins = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+const deleteUserRow = db.prepare("DELETE FROM users WHERE id = ?");
 
 export async function createAccount(username, password, role = "user") {
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
@@ -70,6 +76,33 @@ export function findUserByUsername(username) {
 
 export function hasAnyUsers() {
   return countUsers.get().count > 0;
+}
+
+export function listUsers() {
+  return listAllUsers.all().map((u) => ({
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    totpEnabled: Boolean(u.totp_enabled),
+    createdAt: u.created_at,
+  }));
+}
+
+// A server must never end up with zero admins - checked before letting
+// an admin delete another admin account.
+export function isLastAdmin(userId) {
+  const user = getUserById.get(userId);
+  return Boolean(user) && user.role === "admin" && countAdmins.get().count <= 1;
+}
+
+// ON DELETE CASCADE removes the files/shares/tokens rows, but not the
+// actual bytes on disk - unlink those first via the same per-file
+// deleteFile() the files routes use, or they'd leak forever.
+export async function deleteUserAndFiles(userId) {
+  for (const file of listUserFiles(userId)) {
+    await deleteFile(file.id, userId);
+  }
+  deleteUserRow.run(userId);
 }
 
 /**

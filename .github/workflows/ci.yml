@@ -84,6 +84,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install connect-iq-sdk-manager
         run: curl -s https://raw.githubusercontent.com/lindell/connect-iq-sdk-manager-cli/master/install.sh | sh
+      - name: DEBUG - discover real CLI surface
+        run: |
+          connect-iq-sdk-manager --help
+          echo "--- sdk download ---"
+          connect-iq-sdk-manager sdk download --help
+          echo "--- sdk list ---"
+          connect-iq-sdk-manager sdk list --help
+          echo "--- device ---"
+          connect-iq-sdk-manager device --help
       - name: Download SDK and target device
         env:
           GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}

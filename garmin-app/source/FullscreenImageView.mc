@@ -1,5 +1,6 @@
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.System;
 import Toybox.WatchUi;
 
 class FullscreenImageView extends WatchUi.View {
@@ -7,10 +8,24 @@ class FullscreenImageView extends WatchUi.View {
     private var _bitmap as Graphics.BitmapReference?;
     private var _loading as Boolean;
 
+    // Zoom/pan state. Connect IQ has no pinch/multi-touch gesture API -
+    // InputDelegate is single-touch-point only, even on a touch-first
+    // device like the Vivoactive 6 - so drawScaledBitmap plus
+    // tap-to-cycle-zoom/swipe-to-pan is the idiomatic substitute here,
+    // not a workaround for a missing gesture.
+    private var _zoomLevel as Number;
+    private var _offsetX as Number;
+    private var _offsetY as Number;
+
+    private const MAX_ZOOM = 3;
+
     function initialize(imageId as Number) {
         View.initialize();
         _imageId = imageId;
         _loading = true;
+        _zoomLevel = 1;
+        _offsetX = 0;
+        _offsetY = 0;
     }
 
     function onShow() as Void {
@@ -33,7 +48,18 @@ class FullscreenImageView extends WatchUi.View {
         dc.clear();
 
         if (_bitmap != null) {
-            dc.drawBitmap(0, 0, _bitmap as Graphics.BitmapReference);
+            var bitmap = _bitmap as Graphics.BitmapReference;
+            if (_zoomLevel == 1) {
+                dc.drawBitmap(0, 0, bitmap);
+            } else {
+                dc.drawScaledBitmap(
+                    _offsetX,
+                    _offsetY,
+                    bitmap.getWidth() * _zoomLevel,
+                    bitmap.getHeight() * _zoomLevel,
+                    bitmap
+                );
+            }
         } else {
             var message = _loading ? "Loading..." : "Couldn't load photo";
             dc.drawText(
@@ -44,5 +70,88 @@ class FullscreenImageView extends WatchUi.View {
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
             );
         }
+    }
+
+    // Tap cycles 1x -> 2x -> 3x -> back to 1x, keeping the tapped point
+    // under the tap as the zoom level changes (the standard "zoom to
+    // point" feel) - called from FullscreenImageDelegate.onTap.
+    function zoomAt(tapX as Number, tapY as Number) as Void {
+        if (_bitmap == null) {
+            return;
+        }
+
+        // Where on the *unscaled* image the tap landed, independent of
+        // whatever zoom/pan is currently applied.
+        var originX;
+        var originY;
+        if (_zoomLevel == 1) {
+            originX = tapX;
+            originY = tapY;
+        } else {
+            originX = (tapX - _offsetX) / _zoomLevel;
+            originY = (tapY - _offsetY) / _zoomLevel;
+        }
+
+        _zoomLevel = (_zoomLevel % MAX_ZOOM) + 1;
+
+        if (_zoomLevel == 1) {
+            _offsetX = 0;
+            _offsetY = 0;
+        } else {
+            _offsetX = tapX - originX * _zoomLevel;
+            _offsetY = tapY - originY * _zoomLevel;
+            clampOffset();
+        }
+
+        WatchUi.requestUpdate();
+    }
+
+    function resetZoom() as Void {
+        _zoomLevel = 1;
+        _offsetX = 0;
+        _offsetY = 0;
+        WatchUi.requestUpdate();
+    }
+
+    // Called from FullscreenImageDelegate.onSwipe while zoomed in;
+    // clamped so a pan never drags a blank edge into view.
+    function pan(dx as Number, dy as Number) as Void {
+        if (_zoomLevel == 1 || _bitmap == null) {
+            return;
+        }
+        _offsetX += dx;
+        _offsetY += dy;
+        clampOffset();
+        WatchUi.requestUpdate();
+    }
+
+    function isZoomed() as Boolean {
+        return _zoomLevel > 1;
+    }
+
+    private function clampOffset() as Void {
+        var bitmap = _bitmap as Graphics.BitmapReference;
+        var settings = System.getDeviceSettings();
+        var scaledWidth = bitmap.getWidth() * _zoomLevel;
+        var scaledHeight = bitmap.getHeight() * _zoomLevel;
+
+        _offsetX = clampAxis(_offsetX, scaledWidth, settings.screenWidth);
+        _offsetY = clampAxis(_offsetY, scaledHeight, settings.screenHeight);
+    }
+
+    // Centers the image on an axis where it's smaller than the screen;
+    // otherwise keeps the scaled image edge-to-edge across the screen.
+    private function clampAxis(offset as Number, scaledSize as Number, screenSize as Number) as Number {
+        if (scaledSize <= screenSize) {
+            return (screenSize - scaledSize) / 2;
+        }
+        var minOffset = screenSize - scaledSize;
+        if (offset < minOffset) {
+            return minOffset;
+        }
+        if (offset > 0) {
+            return 0;
+        }
+        return offset;
     }
 }

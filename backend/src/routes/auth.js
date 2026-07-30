@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import argon2 from "argon2";
 import { Router } from "express";
 import {
@@ -12,20 +11,10 @@ import {
 import { requireAuth } from "../middleware/requireAuth.js";
 import { csrfProtection } from "../middleware/csrf.js";
 import { loginRateLimit } from "../middleware/loginRateLimit.js";
+import { issueSession } from "../lib/session.js";
 import { SESSION_COOKIE_NAME } from "../constants.js";
 
 export const authRouter = Router();
-
-function issueSession(req, user) {
-  return new Promise((resolve, reject) => {
-    req.session.regenerate((err) => {
-      if (err) return reject(err);
-      req.session.userId = user.id;
-      req.session.csrfToken = crypto.randomBytes(32).toString("hex");
-      resolve();
-    });
-  });
-}
 
 authRouter.post("/login", loginRateLimit, async (req, res, next) => {
   try {
@@ -48,7 +37,7 @@ authRouter.post("/login", loginRateLimit, async (req, res, next) => {
     }
 
     await issueSession(req, result.user);
-    res.json({ username: result.user.username, csrfToken: req.session.csrfToken });
+    res.json({ username: result.user.username, role: result.user.role, csrfToken: req.session.csrfToken });
   } catch (err) {
     next(err);
   }
@@ -69,7 +58,7 @@ authRouter.post("/login/totp", loginRateLimit, async (req, res, next) => {
     }
 
     await issueSession(req, user);
-    res.json({ username: user.username, csrfToken: req.session.csrfToken });
+    res.json({ username: user.username, role: user.role, csrfToken: req.session.csrfToken });
   } catch (err) {
     next(err);
   }
@@ -87,6 +76,7 @@ authRouter.get("/me", requireAuth, (req, res) => {
   const user = getUser(req.session.userId);
   res.json({
     username: user.username,
+    role: user.role,
     totpEnabled: Boolean(user.totp_enabled),
     csrfToken: req.session.csrfToken,
   });

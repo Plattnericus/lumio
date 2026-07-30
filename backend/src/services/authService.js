@@ -12,7 +12,7 @@ const DUMMY_HASH = await argon2.hash("not-a-real-password", { type: argon2.argon
 const getUserByUsername = db.prepare("SELECT * FROM users WHERE username = ?");
 const getUserById = db.prepare("SELECT * FROM users WHERE id = ?");
 const insertUser = db.prepare(
-  "INSERT INTO users (username, password_hash) VALUES (@username, @passwordHash)"
+  "INSERT INTO users (username, password_hash, role) VALUES (@username, @passwordHash, @role)"
 );
 const updateFailedAttempts = db.prepare(
   "UPDATE users SET failed_attempts = @failedAttempts, locked_until = @lockedUntil WHERE id = @id"
@@ -27,9 +27,9 @@ const clearTotp = db.prepare(
   "UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?"
 );
 
-export async function createAccount(username, password) {
+export async function createAccount(username, password, role = "user") {
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-  insertUser.run({ username, passwordHash });
+  insertUser.run({ username, passwordHash, role });
 }
 
 /**

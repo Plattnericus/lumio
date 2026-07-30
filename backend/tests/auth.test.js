@@ -27,6 +27,9 @@ beforeAll(async () => {
   app = createApp();
 
   await createAccount(USERNAME, PASSWORD);
+  // Separate from USERNAME so it's unaffected by the lockout test below
+  // (that test deliberately leaves USERNAME's account locked).
+  await createAccount("me-check-user", PASSWORD);
 });
 
 afterAll(() => {
@@ -42,6 +45,7 @@ describe("POST /api/auth/login", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.username).toBe(USERNAME);
+    expect(res.body.role).toBe("user");
     expect(typeof res.body.csrfToken).toBe("string");
     expect(res.headers["set-cookie"]).toBeDefined();
   });
@@ -88,5 +92,14 @@ describe("session-protected routes", () => {
   it("rejects /api/auth/me without a session", async () => {
     const res = await request(app).get("/api/auth/me");
     expect(res.status).toBe(401);
+  });
+
+  it("includes role in /api/auth/me for a logged-in session", async () => {
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send({ username: "me-check-user", password: PASSWORD });
+
+    const res = await agent.get("/api/auth/me");
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe("user");
   });
 });

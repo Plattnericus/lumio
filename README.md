@@ -1,0 +1,153 @@
+# Lumio
+
+A self-hosted personal cloud for photos, PDFs, Word and PowerPoint files —
+plus a Garmin Connect IQ companion app to browse it from your wrist. No
+Authentik, no Cloudflare Tunnel, no third-party identity provider: it's just
+this app, served straight off a VPS's public IP.
+
+## Features
+
+- Own login, own sessions — no external auth dependency
+- Drag-and-drop upload with real file-type validation (magic bytes, not
+  extensions)
+- Grid view with image thumbnails and type icons for documents
+- Download and delete, filterable by file type
+- Garmin watch app: pair once, then browse and view your photos on-device
+- TOTP two-factor authentication
+- Real TLS via a Let's Encrypt certificate issued directly for the server's
+  IP address (no domain required)
+
+## Tech stack
+
+| Component | Choice |
+|---|---|
+| `backend/` | Node.js + Express, JSON API only |
+| Database | SQLite via `better-sqlite3` |
+| `frontend/` | Vanilla JS/HTML/CSS, no framework, no build server |
+| `garmin-app/` | Connect IQ SDK, Monkey C |
+| Reverse proxy / TLS | nginx |
+| Tests | Vitest (backend) |
+| CI/CD | GitHub Actions |
+| Releases | Conventional Commits + release-please |
+
+## Repo structure & branch strategy
+
+```
+lumio/
+├── backend/            # Express API, SQLite, auth, uploads
+├── frontend/            # Static dashboard
+├── garmin-app/          # Connect IQ project
+├── .github/workflows/    # CI, release, deploy
+├── CLAUDE.md
+└── README.md
+```
+
+- `main` — protected, always deployable, the only branch releases/deploys are
+  cut from.
+- `backend`, `frontend`, `garmin-app` — long-lived per-component branches,
+  merged into `main` via PR once CI is green.
+
+See [CLAUDE.md](CLAUDE.md) for the full standing rules.
+
+## Prerequisites
+
+- Node.js (see `backend/.nvmrc` once added) and npm
+- A Connect IQ SDK install + simulator for `garmin-app/`
+- nginx and certbot ≥ 5.4 on the deploy target
+- `gh` CLI for repo/release operations (optional, convenience only)
+
+## Local setup
+
+### backend/
+
+```bash
+cd backend
+cp .env.example .env   # fill in real values, never commit .env
+npm install
+npm run dev
+```
+
+### frontend/
+
+```bash
+cd frontend
+npm install
+npm run dev   # served separately in dev; nginx serves frontend/dist in prod
+```
+
+### garmin-app/
+
+Open `garmin-app/` in the Connect IQ SDK / VS Code plugin and run it against
+the Vivoactive 6 simulator.
+
+## Environment variables
+
+All of these live in `backend/.env` (see `backend/.env.example` for the full,
+value-free template — never commit the real file).
+
+| Variable | Purpose |
+|---|---|
+| `NODE_ENV` | `development` or `production` |
+| `PORT` | Port the API listens on (bound to `127.0.0.1` only) |
+| `SESSION_SECRET` | Random secret for signing session cookies |
+| `DB_PATH` | Path to the SQLite database file |
+| `UPLOAD_DIR` | Path where uploaded files are stored |
+| `MAX_UPLOAD_MB` | Upload size limit in megabytes |
+| `LOGIN_RATE_LIMIT_MAX` | Failed login attempts allowed before lockout |
+| `PAIRING_CODE_TTL_MINUTES` | How long a Garmin pairing code stays valid |
+
+## CI/CD & release process
+
+- Every PR runs `.github/workflows/ci.yml`, path-filtered per component:
+  lint, tests, `npm audit`. Merging into `main` requires this to pass
+  (branch protection).
+- `release-please` watches `main`'s Conventional Commit history and opens a
+  release PR with a generated `CHANGELOG.md`. Merging that PR cuts a GitHub
+  Release + tag.
+- `deploy.yml` triggers on `release: published`: SSH onto the VPS, checkout
+  the tag, `npm ci --production`, restart the service, then hit
+  `/api/health`. A failed health check rolls back to the previous tag
+  automatically and fails the workflow — a bad release never stays live.
+
+## Deployment
+
+Deployed to `/root/lumio` on the VPS, reachable at
+`https://<vps-ip>:8444` (port 8444, not 8443 — see CLAUDE.md for why).
+nginx serves `frontend/dist` as static files and proxies `/api/*` to the
+Node process on `127.0.0.1`. The Node process itself never binds to a public
+interface.
+
+## Certificate renewal
+
+TLS uses a Let's Encrypt certificate issued directly for the server's IP
+address (GA since January 2026), valid for ~160 hours. A systemd timer runs
+`certbot renew` twice daily; a separate check alerts if the certificate has
+less than 48 hours left. This is a hard requirement, not a one-time setup
+step — see CLAUDE.md.
+
+## Backup & restore
+
+A daily job snapshots the SQLite database and the upload directory, rotating
+the last 7 days locally.
+
+**Offsite backup target: not yet decided — TODO.** A VPS failure currently
+takes the local rotation down with it. Pick a destination (a second machine,
+object storage, etc.) and this gets wired in as a follow-up.
+
+## Security notes
+
+- Argon2id password hashing, no open registration — the one account is
+  created via a setup script.
+- Sessions: `httpOnly`, `secure`, `sameSite=strict` cookies; CSRF protection
+  on all state-changing routes.
+- Rate limiting + lockout on `/api/login`, with a generic error message that
+  never reveals whether a username exists.
+- Uploads are validated by magic bytes against an allow-list (jpg, png,
+  webp, pdf, docx, pptx), size-limited, stored under randomized filenames,
+  and only ever served through an authenticated endpoint — never mounted
+  statically.
+- `fail2ban` watches both sshd and repeated app login failures.
+
+## License
+
+Private project — no license granted for reuse.

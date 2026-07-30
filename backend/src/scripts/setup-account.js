@@ -2,8 +2,12 @@ import readline from "node:readline";
 import { db } from "../db/index.js";
 import { createAccount } from "../services/authService.js";
 
-// No open registration by design - this is the only way an account gets
-// created, and it refuses to run twice unless you explicitly mean it to.
+// SSH-only emergency/disaster-recovery tool - the primary way to create
+// an account is now the first-run web setup wizard. --force is more
+// dangerous than it used to be now that multiple real users (and their
+// files, via ON DELETE CASCADE) can exist, so it prints exactly how much
+// it's about to destroy and requires typing a real confirmation phrase
+// rather than just accepting the flag.
 //
 // Uses the readline async-iterator interface rather than the classic
 // question() callback API: with question(), several lines delivered in one
@@ -18,7 +22,7 @@ async function main() {
 
   if (existing.count > 0 && !force) {
     console.error(
-      "An account already exists. Re-run with --force to replace it (this deletes the existing one)."
+      "An account already exists. Re-run with --force to replace it (this deletes every existing account and all of their files)."
     );
     process.exit(1);
   }
@@ -43,6 +47,19 @@ async function main() {
     return done ? "" : value.trim();
   }
 
+  if (existing.count > 0) {
+    const fileCount = db.prepare("SELECT COUNT(*) as count FROM files").get().count;
+    console.error(
+      `WARNING: this will permanently delete ${existing.count} account(s) and ${fileCount} file(s). This cannot be undone.`
+    );
+    const confirmation = await ask('Type "DELETE ALL" to continue: ');
+    if (confirmation !== "DELETE ALL") {
+      console.error("Confirmation did not match - nothing was deleted.");
+      rl.close();
+      process.exit(1);
+    }
+  }
+
   const username = await ask("Username: ");
   const password = await ask("Password: ", { hidden: true });
   const confirm = await ask("Confirm password: ", { hidden: true });
@@ -61,8 +78,8 @@ async function main() {
     db.prepare("DELETE FROM users").run();
   }
 
-  await createAccount(username, password);
-  console.log(`Account "${username}" created.`);
+  await createAccount(username, password, "admin");
+  console.log(`Account "${username}" created as admin.`);
   db.close();
 }
 

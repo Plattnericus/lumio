@@ -17,6 +17,16 @@ function readEnv() {
     loginRateLimitMax: Number(process.env.LOGIN_RATE_LIMIT_MAX || 5),
     loginLockoutMinutes: Number(process.env.LOGIN_LOCKOUT_MINUTES || 15),
     pairingCodeTtlMinutes: Number(process.env.PAIRING_CODE_TTL_MINUTES || 10),
+    // Express's trust-proxy subnets, comma-separated (accepts "loopback",
+    // "linklocal", "uniquelocal", or CIDR ranges). Only nginx talks to this
+    // process by default (loopback) - add the reverse proxy chain's own
+    // internal subnet here if another hop (e.g. a domain-fronting proxy)
+    // sits in front of nginx, otherwise req.ip resolves to that hop's own
+    // address instead of the real client for every request behind it.
+    trustedProxies: (process.env.TRUSTED_PROXY_SUBNETS || "loopback")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 
   // Fail fast in production rather than limping along without a session

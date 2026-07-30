@@ -141,8 +141,21 @@ step — see CLAUDE.md.
 
 ## Backup & restore
 
-A daily job snapshots the SQLite database and the upload directory, rotating
-the last 7 days locally.
+`npm run backup` (from `backend/`) snapshots the database and upload
+directory into `backend/data/backups/`, rotating anything older than 7
+days. It uses SQLite's own online backup API rather than a plain file
+copy, which isn't safe against a live WAL-mode database.
+
+Run it daily via a systemd timer on the VPS - a oneshot service calling
+`npm run backup` in `/root/lumio/backend`, triggered by a timer with
+`OnCalendar=daily`, the same pattern as the certificate-check timer.
+
+Override the destination or retention window with `BACKUP_DIR` and
+`BACKUP_RETENTION_DAYS` env vars.
+
+**Restore:** stop the service, copy a backed-up `.sqlite` file back to the
+path in `DB_PATH`, copy the matching `uploads-<timestamp>/` snapshot back to
+`UPLOAD_DIR`, restart the service.
 
 **Offsite backup target: not yet decided — TODO.** A VPS failure currently
 takes the local rotation down with it. Pick a destination (a second machine,

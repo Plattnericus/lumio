@@ -90,6 +90,45 @@ export const iconShield = `
   <path d="M9 12.3l2 2 4-4.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
+export const iconShare = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 3v12.5M12 3 8 7M12 3l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 11v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconUsers = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M3 19.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M15.5 5.3a3 3 0 0 1 0 5.8M18.5 19.2c-.1-2.6-1.4-4.4-3.4-5.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
+export const iconGear = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M12 3.5v2.3M12 18.2v2.3M20.5 12h-2.3M5.8 12H3.5M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6M17.7 17.7l-1.6-1.6M7.9 7.9 6.3 6.3"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
+export const iconLibrary = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="3" y="4.5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M8.5 9.5v4M11.5 8v5.5M14.5 10.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M18.5 7.5v9a2 2 0 0 1-2 2H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
+export const iconCheck = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M7.5 12.3 10.3 15l6.2-6.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconKey = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="8" cy="15.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M11 12.5 18.5 5M15.5 8.5l2 2M18 6l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
 const ICONS_BY_EXTENSION = {
   jpg: iconImage,
   png: iconImage,

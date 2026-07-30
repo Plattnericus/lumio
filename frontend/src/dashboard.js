@@ -4,10 +4,15 @@ import {
   iconClose,
   iconDownload,
   iconForExtension,
+  iconGear,
+  iconKey,
+  iconLibrary,
   iconLogout,
+  iconShare,
   iconShield,
   iconTrash,
   iconUpload,
+  iconUsers,
   iconWatch,
 } from "./icons.js";
 
@@ -19,40 +24,92 @@ const FILTERS = [
   { value: "pptx", label: "PowerPoint" },
 ];
 
+const SCOPE_TITLES = {
+  mine: "My Files",
+  shared: "Shared with Me",
+};
+
 export function mountDashboard(root, session, onLogout) {
   const state = {
     csrfToken: session.csrfToken,
     totpEnabled: session.totpEnabled,
+    username: session.username,
+    role: session.role,
+    scope: "mine",
     filter: "",
   };
 
-  root.innerHTML = `
-    <div class="topbar glass">
-      <div class="brand">${iconBrand}<span>Lumio</span></div>
-      <div class="topbar-actions">
-        <span class="username-pill">${escapeHtml(session.username)}</span>
-        <button class="btn btn-icon" id="btn-totp" title="Two-factor authentication">${iconShield}</button>
-        <button class="btn btn-icon" id="btn-pair" title="Pair Garmin watch">${iconWatch}</button>
-        <button class="btn btn-icon" id="btn-logout" title="Log out">${iconLogout}</button>
-      </div>
-    </div>
+  render();
 
-    <div class="filters glass" id="filters"></div>
+  function render() {
+    root.innerHTML = `
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="brand">${iconBrand}<span>Lumio</span></div></div>
 
-    <div class="dropzone" id="dropzone">
-      <div class="grid" id="grid"></div>
-    </div>
+        <nav class="sidebar-nav">
+          <div class="nav-section-label">Library</div>
+          <button class="nav-item${state.scope === "mine" ? " active" : ""}" data-scope="mine">${iconLibrary}<span>My Files</span></button>
+          <button class="nav-item${state.scope === "shared" ? " active" : ""}" data-scope="shared">${iconUsers}<span>Shared with Me</span></button>
+        </nav>
 
-    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp,.pdf,.docx,.pptx" multiple hidden />
-    <div id="modal-root"></div>
-    <div id="toast-root"></div>
-  `;
+        <div class="sidebar-footer">
+          <button class="nav-item" id="nav-pair">${iconWatch}<span>Pair Garmin Watch</span></button>
+          <button class="nav-item" id="nav-totp">${iconShield}<span>Two-Factor Auth</span></button>
+          <button class="nav-item" id="nav-account">${iconKey}<span>Account</span></button>
+          ${state.role === "admin" ? `<button class="nav-item" id="nav-admin">${iconGear}<span>Admin</span></button>` : ""}
+          <div class="sidebar-user">
+            <div class="avatar">${escapeHtml(state.username.slice(0, 1))}</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">${escapeHtml(state.username)}</div>
+              <div class="role-badge${state.role === "admin" ? " admin" : ""}">${state.role === "admin" ? "Admin" : "Member"}</div>
+            </div>
+            <button class="btn btn-icon" id="btn-logout" title="Log out">${iconLogout}</button>
+          </div>
+        </div>
+      </aside>
 
-  renderFilters();
-  wireDropzone();
-  wireHeaderActions();
-  wireUploadEntryPoint();
-  loadFiles();
+      <main class="content">
+        <div class="content-toolbar">
+          <h1>${SCOPE_TITLES[state.scope]}</h1>
+          <div class="content-toolbar-actions">
+            <button class="btn btn-primary" id="btn-upload">${iconUpload}<span>Upload</span></button>
+          </div>
+        </div>
+
+        <div class="filters" id="filters"></div>
+
+        <div class="dropzone" id="dropzone">
+          <div class="grid" id="grid"></div>
+        </div>
+      </main>
+
+      <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp,.pdf,.docx,.pptx" multiple hidden />
+      <div id="modal-root"></div>
+      <div id="toast-root"></div>
+    `;
+
+    renderFilters();
+    wireNav();
+    wireDropzone();
+    wireHeaderActions();
+    loadFiles();
+  }
+
+  function wireNav() {
+    root.querySelectorAll("[data-scope]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (state.scope === btn.dataset.scope) return;
+        state.scope = btn.dataset.scope;
+        render();
+      });
+    });
+
+    root.querySelector("#nav-pair").addEventListener("click", openPairingModal);
+    root.querySelector("#nav-totp").addEventListener("click", openTotpModal);
+    root.querySelector("#nav-account").addEventListener("click", openAccountModal);
+    root.querySelector("#nav-admin")?.addEventListener("click", openAdminModal);
+    root.querySelector("#btn-upload").addEventListener("click", () => root.querySelector("#file-input").click());
+  }
 
   function renderFilters() {
     const el = root.querySelector("#filters");
@@ -74,7 +131,7 @@ export function mountDashboard(root, session, onLogout) {
     const grid = root.querySelector("#grid");
     grid.innerHTML = `<p class="empty-state">Loading...</p>`;
     try {
-      const files = await api.listFiles(state.filter);
+      const files = await api.listFiles(state.filter, state.scope);
       renderGrid(files);
     } catch (err) {
       grid.innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
@@ -84,7 +141,11 @@ export function mountDashboard(root, session, onLogout) {
   function renderGrid(files) {
     const grid = root.querySelector("#grid");
     if (files.length === 0) {
-      grid.innerHTML = `<p class="empty-state">No files yet. Drag files here or use the upload button.</p>`;
+      grid.innerHTML = `<p class="empty-state">${
+        state.scope === "shared"
+          ? "Nothing has been shared with you yet."
+          : "No files yet. Drag files here or use the upload button."
+      }</p>`;
       return;
     }
 
@@ -93,6 +154,9 @@ export function mountDashboard(root, session, onLogout) {
     grid.querySelectorAll("[data-delete]").forEach((btn) => {
       btn.addEventListener("click", () => confirmDelete(Number(btn.dataset.delete)));
     });
+    grid.querySelectorAll("[data-share]").forEach((btn) => {
+      btn.addEventListener("click", () => openShareModal(Number(btn.dataset.share)));
+    });
   }
 
   function fileCardHtml(file) {
@@ -100,16 +164,27 @@ export function mountDashboard(root, session, onLogout) {
       ? `<img src="${thumbnailUrl(file.id)}" alt="" loading="lazy" />`
       : iconForExtension(file.extension);
 
-    return `
-      <div class="file-card glass">
-        <div class="file-actions">
+    const actions =
+      state.scope === "shared"
+        ? `<a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>`
+        : `
           <a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
+          <button class="btn" data-share="${file.id}" title="Share">${iconShare}</button>
           <button class="btn btn-danger" data-delete="${file.id}" title="Delete">${iconTrash}</button>
-        </div>
+        `;
+
+    const sub =
+      state.scope === "shared" && file.sharedBy
+        ? `Shared by ${escapeHtml(file.sharedBy)}`
+        : `${formatBytes(file.sizeBytes)} &middot; ${formatDate(file.uploadedAt)}`;
+
+    return `
+      <div class="file-card">
+        <div class="file-actions">${actions}</div>
         <div class="file-thumb">${thumb}</div>
         <div class="file-meta">
           <div class="file-name" title="${escapeHtml(file.originalName)}">${escapeHtml(file.originalName)}</div>
-          <div class="file-sub">${formatBytes(file.sizeBytes)} &middot; ${formatDate(file.uploadedAt)}</div>
+          <div class="file-sub">${sub}</div>
         </div>
       </div>
     `;
@@ -135,6 +210,78 @@ export function mountDashboard(root, session, onLogout) {
         showToast(err.message, true);
       }
     });
+  }
+
+  async function openShareModal(id) {
+    openModal(`
+      <h2>Share file</h2>
+      <p>Anyone you share with can view and download it - never delete or re-share it.</p>
+      <div class="inline-form">
+        <input type="text" id="share-username" placeholder="Username" autocomplete="off" />
+        <button class="btn btn-secondary" id="share-submit">Share</button>
+      </div>
+      <p class="error-text" id="share-error"></p>
+      <div class="row-list" id="share-list"><p class="empty-state" style="padding:20px;">Loading...</p></div>
+      <div class="modal-actions"><button class="btn" id="close-share">Done</button></div>
+    `);
+    root.querySelector("#close-share").addEventListener("click", closeModal);
+    root.querySelector("#share-submit").addEventListener("click", () => submitShare(id));
+    root.querySelector("#share-username").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submitShare(id);
+    });
+
+    await loadShares(id);
+  }
+
+  async function loadShares(id) {
+    const listEl = root.querySelector("#share-list");
+    if (!listEl) return;
+    try {
+      const shares = await api.listShares(id);
+      if (shares.length === 0) {
+        listEl.innerHTML = `<p class="empty-state" style="padding:16px;">Not shared with anyone yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = shares
+        .map(
+          (s) => `
+            <div class="share-row">
+              <div class="avatar">${escapeHtml(s.username.slice(0, 1))}</div>
+              <div class="row-name">${escapeHtml(s.username)}</div>
+              <button class="btn btn-icon btn-danger" data-revoke="${s.userId}" title="Revoke access">${iconClose}</button>
+            </div>
+          `
+        )
+        .join("");
+      listEl.querySelectorAll("[data-revoke]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api.unshareFile(id, Number(btn.dataset.revoke), state.csrfToken);
+            await loadShares(id);
+          } catch (err) {
+            showToast(err.message, true);
+          }
+        });
+      });
+    } catch (err) {
+      listEl.innerHTML = `<p class="empty-state" style="padding:16px;">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function submitShare(id) {
+    const input = root.querySelector("#share-username");
+    const errorEl = root.querySelector("#share-error");
+    errorEl.textContent = "";
+    const username = input.value.trim();
+    if (!username) return;
+
+    try {
+      await api.shareFile(id, username, state.csrfToken);
+      input.value = "";
+      await loadShares(id);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
   }
 
   function wireDropzone() {
@@ -168,7 +315,14 @@ export function mountDashboard(root, session, onLogout) {
     for (const file of Array.from(fileList)) {
       await handleSingleUpload(file);
     }
-    loadFiles();
+    // Uploads always land in "my files" - switch there so the result is
+    // actually visible if the user was looking at "shared with me".
+    if (state.scope === "shared") {
+      state.scope = "mine";
+      render();
+    } else {
+      loadFiles();
+    }
   }
 
   function handleSingleUpload(file) {
@@ -198,9 +352,6 @@ export function mountDashboard(root, session, onLogout) {
         onLogout();
       }
     });
-
-    root.querySelector("#btn-pair").addEventListener("click", openPairingModal);
-    root.querySelector("#btn-totp").addEventListener("click", openTotpModal);
   }
 
   async function openPairingModal() {
@@ -289,10 +440,183 @@ export function mountDashboard(root, session, onLogout) {
     }
   }
 
-  function openModal(html) {
+  function openAccountModal() {
+    openModal(`
+      <h2>Change password</h2>
+      <p>Choose a new password for your own account.</p>
+      <div class="field"><label for="acct-current">Current password</label><input id="acct-current" type="password" autocomplete="current-password" /></div>
+      <div class="field"><label for="acct-new">New password</label><input id="acct-new" type="password" autocomplete="new-password" minlength="12" /></div>
+      <div class="field"><label for="acct-confirm">Confirm new password</label><input id="acct-confirm" type="password" autocomplete="new-password" /></div>
+      <p class="error-text" id="acct-error"></p>
+      <div class="modal-actions">
+        <button class="btn" id="cancel-acct">Cancel</button>
+        <button class="btn btn-primary" id="save-acct">Save</button>
+      </div>
+    `);
+    root.querySelector("#cancel-acct").addEventListener("click", closeModal);
+    root.querySelector("#save-acct").addEventListener("click", async () => {
+      const errorEl = root.querySelector("#acct-error");
+      const current = root.querySelector("#acct-current").value;
+      const next = root.querySelector("#acct-new").value;
+      const confirm = root.querySelector("#acct-confirm").value;
+
+      if (next !== confirm) {
+        errorEl.textContent = "New passwords do not match";
+        return;
+      }
+      try {
+        await api.changePassword(current, next, state.csrfToken);
+        closeModal();
+        showToast("Password updated");
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+  }
+
+  async function openAdminModal() {
+    openModal(
+      `
+      <h2>Admin</h2>
+      <div class="modal-tabs" id="admin-tabs">
+        <button class="modal-tab active" data-tab="users">Users</button>
+        <button class="modal-tab" data-tab="settings">Settings</button>
+      </div>
+      <div id="admin-tab-content"></div>
+      <div class="modal-actions"><button class="btn" id="close-admin">Done</button></div>
+    `,
+      { wide: true }
+    );
+    root.querySelector("#close-admin").addEventListener("click", closeModal);
+    root.querySelectorAll("#admin-tabs .modal-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        root.querySelectorAll("#admin-tabs .modal-tab").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderAdminTab(btn.dataset.tab);
+      });
+    });
+
+    await renderAdminTab("users");
+  }
+
+  async function renderAdminTab(tab) {
+    const content = root.querySelector("#admin-tab-content");
+    if (!content) return;
+
+    if (tab === "settings") {
+      content.innerHTML = `<p class="empty-state" style="padding:20px;">Loading...</p>`;
+      try {
+        const { autoUpdateEnabled } = await api.getSettings();
+        content.innerHTML = `
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Auto-update</div>
+              <div class="settings-row-hint">Automatically deploy new releases when they're published.</div>
+            </div>
+            <button class="switch${autoUpdateEnabled ? " on" : ""}" id="toggle-auto-update"></button>
+          </div>
+        `;
+        content.querySelector("#toggle-auto-update").addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
+          const next = !btn.classList.contains("on");
+          try {
+            await api.updateSettings(next, state.csrfToken);
+            btn.classList.toggle("on", next);
+          } catch (err) {
+            showToast(err.message, true);
+          }
+        });
+      } catch (err) {
+        content.innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
+      }
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="inline-form">
+        <input type="text" id="new-user-username" placeholder="Username" autocomplete="off" />
+        <input type="password" id="new-user-password" placeholder="Password (12+ characters)" autocomplete="new-password" />
+        <button class="btn btn-secondary" id="new-user-submit">Add</button>
+      </div>
+      <p class="error-text" id="admin-users-error"></p>
+      <div class="row-list" id="user-list"><p class="empty-state" style="padding:20px;">Loading...</p></div>
+    `;
+    content.querySelector("#new-user-submit").addEventListener("click", submitNewUser);
+    await loadUsers();
+  }
+
+  async function submitNewUser() {
+    const usernameEl = root.querySelector("#new-user-username");
+    const passwordEl = root.querySelector("#new-user-password");
+    const errorEl = root.querySelector("#admin-users-error");
+    errorEl.textContent = "";
+
+    try {
+      await api.createUser(usernameEl.value.trim(), passwordEl.value, state.csrfToken);
+      usernameEl.value = "";
+      passwordEl.value = "";
+      await loadUsers();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  }
+
+  async function loadUsers() {
+    const listEl = root.querySelector("#user-list");
+    if (!listEl) return;
+    try {
+      const users = await api.listUsers();
+      listEl.innerHTML = users
+        .map(
+          (u) => `
+            <div class="user-row">
+              <div class="avatar">${escapeHtml(u.username.slice(0, 1))}</div>
+              <div class="row-name">${escapeHtml(u.username)}
+                <span class="role-badge${u.role === "admin" ? " admin" : ""}">${u.role === "admin" ? "Admin" : "Member"}</span>
+              </div>
+              <div class="row-sub">${formatDate(u.createdAt)}</div>
+              ${
+                u.username === state.username
+                  ? ""
+                  : `<button class="btn btn-icon btn-danger" data-delete-user="${u.id}" title="Remove user">${iconTrash}</button>`
+              }
+            </div>
+          `
+        )
+        .join("");
+      listEl.querySelectorAll("[data-delete-user]").forEach((btn) => {
+        btn.addEventListener("click", () => confirmDeleteUser(Number(btn.dataset.deleteUser)));
+      });
+    } catch (err) {
+      listEl.innerHTML = `<p class="empty-state">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  function confirmDeleteUser(id) {
+    openModal(`
+      <h2>Remove this user?</h2>
+      <p>Their account and all of their files will be permanently deleted. This can't be undone.</p>
+      <div class="modal-actions">
+        <button class="btn" id="cancel-remove-user">Cancel</button>
+        <button class="btn btn-danger" id="confirm-remove-user">Remove</button>
+      </div>
+    `);
+    root.querySelector("#cancel-remove-user").addEventListener("click", () => openAdminModal());
+    root.querySelector("#confirm-remove-user").addEventListener("click", async () => {
+      try {
+        await api.deleteUser(id, state.csrfToken);
+        await openAdminModal();
+      } catch (err) {
+        closeModal();
+        showToast(err.message, true);
+      }
+    });
+  }
+
+  function openModal(html, { wide = false } = {}) {
     root.querySelector("#modal-root").innerHTML = `
       <div class="modal-backdrop" id="modal-backdrop">
-        <div class="modal glass">
+        <div class="modal glass${wide ? " modal-wide" : ""}">
           <button class="btn btn-icon" id="modal-close" style="float:right;margin:-8px -8px 0 0;">${iconClose}</button>
           ${html}
         </div>
@@ -312,18 +636,6 @@ export function mountDashboard(root, session, onLogout) {
     const toastRoot = root.querySelector("#toast-root");
     toastRoot.innerHTML = `<div class="upload-toast glass"><div class="upload-toast-name" style="color:${isError ? "var(--danger)" : "var(--text-0)"}">${escapeHtml(message)}</div></div>`;
     setTimeout(() => (toastRoot.innerHTML = ""), 3000);
-  }
-
-  function wireUploadEntryPoint() {
-    // The dropzone doubles as the click target for the hidden file input,
-    // so there's a non-drag way in for mouse/keyboard/touch users too.
-    const actions = root.querySelector(".topbar-actions");
-    const uploadBtn = document.createElement("button");
-    uploadBtn.className = "btn btn-icon";
-    uploadBtn.title = "Upload";
-    uploadBtn.innerHTML = iconUpload;
-    uploadBtn.addEventListener("click", () => root.querySelector("#file-input").click());
-    actions.insertBefore(uploadBtn, actions.firstChild);
   }
 }
 

@@ -24,8 +24,10 @@ export function createApp() {
 
   // Sits behind nginx, which sits behind the VPS's own reverse proxy chain -
   // needed so secure cookies and rate-limit keys see the real client IP.
+  // A subnet list (not a hop count) so it stays correct regardless of how
+  // many trusted hops are actually in front of it on a given request path.
   if (isProduction) {
-    app.set("trust proxy", 1);
+    app.set("trust proxy", env.trustedProxies);
   }
 
   app.use(helmet());

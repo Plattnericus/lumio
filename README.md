@@ -188,6 +188,35 @@ the unit's own comments for the two hardening flags that had to be left
 off and why (`ProtectHome` conflicts with code living under `/root`;
 `MemoryDenyWriteExecute` breaks Node's V8 JIT).
 
+### Domain access on this VPS
+
+The same server also runs Netbird (haproxy + Caddy, both in Docker) and
+Unifi for unrelated services, sharing the box's one public IP on ports
+80/443. Lumio is additionally reachable at `https://pics.plattnericus.dev`
+by fronting the same nginx (`https://<vps-ip>:8444`) with a new Caddy site
+block - purely additive, no changes to Netbird/Unifi's own routing:
+
+- Caddy already terminates TLS for every other hostname on this box via
+  its own automatic HTTPS (real Let's Encrypt certs, no IP-cert dance
+  needed here since it's a normal domain). A new site block reverse-proxies
+  `pics.plattnericus.dev` to nginx's existing `8444` listener over the
+  Docker bridge, skipping upstream cert verification for that one internal
+  hop (nginx's own cert is issued for the bare IP, not this hostname) -
+  the same pattern already used for this box's Unifi site block.
+- haproxy's TCP-passthrough backend to Caddy (`be_caddy_tls`) sends
+  `send-proxy-v2`, and Caddy's `:443` listener is configured to accept
+  PROXY protocol only from haproxy's own address. Without this, every
+  request reaching Lumio via the domain would appear to come from an
+  internal Docker address instead of the real visitor, silently breaking
+  per-client rate limiting and the fail2ban app-login jail for that path.
+  `TRUSTED_PROXY_SUBNETS` (see Environment variables) must include the
+  Docker bridge subnet the Caddy/haproxy containers sit on in addition to
+  `loopback` for this to resolve correctly end to end.
+- `ufw` is intentionally not used anywhere on this box - `fail2ban` plus
+  the containers' own port bindings are what's actually in effect.
+- Direct `https://<vps-ip>:8444` access keeps working unchanged alongside
+  the domain.
+
 ## Certificate renewal
 
 TLS uses a Let's Encrypt certificate issued directly for the server's IP

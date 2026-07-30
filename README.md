@@ -132,6 +132,36 @@ the repo's Settings → Secrets and variables → Actions.
 
 ## Deployment
 
+### One-command install
+
+On a fresh Ubuntu/Debian server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Plattnericus/lumio/main/scripts/install.sh | sudo LE_EMAIL=you@example.com bash
+```
+
+Installs Node, nginx, certbot, fail2ban; creates a dedicated system user;
+clones the repo; builds both apps; issues a real Let's Encrypt certificate;
+installs the hardened systemd service, fail2ban jail, certificate-expiry
+check, and daily backup timer - then starts it. Every path and setting is
+overridable via env vars (`INSTALL_DIR`, `HTTPS_PORT`, `SYSTEM_USER`,
+`SERVER_ADDRESS`, `BACKUP_RETENTION_DAYS`), nothing is hardcoded.
+
+Targets the common case: a server where nginx can own port 80 and
+`HTTPS_PORT` itself. If something else already holds one of those ports
+(as on the actual VPS this project was built against - see below), the
+script detects it, skips what it can't safely automate, and tells you
+exactly what to do by hand instead of guessing at someone else's config.
+
+Verified: syntax-checked, zero shellcheck warnings, every generated
+config file (systemd unit via `systemd-analyze verify`, nginx vhost via
+`nginx -t`) validated against real tooling, and the certbot invocation
+matches the exact command already proven to work in Certificate renewal
+below - not the `--nginx` plugin, which is untested for `--ip-address`
+certificates specifically.
+
+### Manual / this project's actual VPS
+
 Deployed to `/root/lumio` on the VPS, reachable at
 `https://<vps-ip>:8444`. Port 8444 rather than 8443 only matters if
 something else on the box already holds 8443 - pick whichever is actually

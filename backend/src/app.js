@@ -11,6 +11,7 @@ import { healthRouter } from "./routes/health.js";
 import { authRouter } from "./routes/auth.js";
 import { setupRouter } from "./routes/setup.js";
 import { adminRouter } from "./routes/admin.js";
+import { settingsRouter } from "./routes/settings.js";
 import { filesRouter } from "./routes/files.js";
 import { pairingRouter } from "./routes/pairing.js";
 import { garminRouter } from "./routes/garmin.js";
@@ -59,6 +60,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/setup", setupRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/settings", settingsRouter);
   app.use("/api/files", filesRouter);
   app.use("/api/pairing", pairingRouter);
   app.use("/api/garmin", garminRouter);

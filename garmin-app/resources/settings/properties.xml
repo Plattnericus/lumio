@@ -1,0 +1,4 @@
+<properties>
+    <property id="serverUrl" type="string"></property>
+    <property id="pairingCode" type="string"></property>
+</properties>

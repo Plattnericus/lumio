@@ -370,8 +370,16 @@ echo ""
 echo "  URL:      ${BOLD}https://${SERVER_ADDRESS}:${HTTPS_PORT}${RESET}"
 echo "  Install:  ${INSTALL_DIR}"
 echo ""
-echo "  ${BOLD}Next step${RESET} - create your account (no open registration by design):"
-echo "    sudo -u ${SYSTEM_USER} node ${INSTALL_DIR}/backend/src/scripts/setup-account.js"
+SETUP_TOKEN_FILE="${INSTALL_DIR}/backend/data/setup-token.txt"
+if [ -f "$SETUP_TOKEN_FILE" ]; then
+  echo "  ${BOLD}Next step${RESET} - open the URL above and follow the first-run setup wizard."
+  echo "  One-time setup token: ${BOLD}$(cat "$SETUP_TOKEN_FILE")${RESET}"
+  echo "  (single-use - re-read any time with: cat ${SETUP_TOKEN_FILE})"
+else
+  echo "  ${BOLD}Next step${RESET} - an account already exists on this install. To replace it in an"
+  echo "  emergency (SSH-only, deletes every account and file):"
+  echo "    sudo -u ${SYSTEM_USER} node ${INSTALL_DIR}/backend/src/scripts/setup-account.js --force"
+fi
 echo ""
 if port_owned_by_something_else 80 || [ ! -d "$CERT_DIR" ]; then
   echo "  ${YELLOW}Action needed:${RESET} certificate issuance was skipped or failed above - see the warning for what to do."

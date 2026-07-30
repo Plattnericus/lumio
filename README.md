@@ -8,14 +8,20 @@ this app, served straight off a VPS's public IP.
 ## Features
 
 - Own login, own sessions — no external auth dependency
+- Multi-user: a first-run setup wizard creates the admin account, who can
+  then provision further accounts — still no open self-registration
+- Per-file sharing by username — view/download only, never delete or
+  re-share; everything stays private unless you explicitly share it
 - Drag-and-drop upload with real file-type validation (magic bytes, not
   extensions)
 - Grid view with image thumbnails and type icons for documents
 - Download and delete, filterable by file type
-- Garmin watch app: pair once, then browse and view your photos on-device
+- Garmin watch app: pair once, then browse, view, and zoom/pan your
+  photos on-device
 - TOTP two-factor authentication
 - Real TLS via a Let's Encrypt certificate issued directly for the server's
   IP address (no domain required)
+- Optional auto-update on new releases, off by default, admin-toggled
 
 ## Tech stack
 
@@ -64,6 +70,11 @@ npm install
 npm run dev
 ```
 
+Open the frontend (or hit `GET /api/setup/status`) and the first-run setup
+wizard walks you through creating the admin account — no need to run
+`npm run setup-account` for that anymore. That script still exists as an
+SSH-only disaster-recovery tool; see Security notes below.
+
 ### frontend/
 
 ```bash
@@ -98,6 +109,7 @@ value-free template — never commit the real file).
 | `SESSION_SECRET` | Random secret for signing session cookies |
 | `DB_PATH` | Path to the SQLite database file |
 | `UPLOAD_DIR` | Path where uploaded files are stored |
+| `SETUP_TOKEN_PATH` | Where the one-time first-run setup token is written. Defaults to `setup-token.txt` next to `DB_PATH` |
 | `MAX_UPLOAD_MB` | Upload size limit in megabytes |
 | `LOGIN_RATE_LIMIT_MAX` | Failed login attempts allowed before lockout |
 | `PAIRING_CODE_TTL_MINUTES` | How long a Garmin pairing code stays valid |
@@ -210,8 +222,22 @@ object storage, etc.) and this gets wired in as a follow-up.
 
 ## Security notes
 
-- Argon2id password hashing, no open registration — the one account is
-  created via a setup script.
+- Argon2id password hashing, no open self-registration. The first-run web
+  setup wizard creates the one admin account; that admin provisions any
+  further accounts (always `role: user` — no admin-creates-admin). A
+  one-time setup token (generated at boot, readable only by the app's own
+  system user, single-use) gates the wizard: without it, a browser-based
+  setup route would let whoever's request reaches it first become the
+  permanent admin, since the box is reachable at a bare public IP with
+  nothing in front of it.
+- `backend/src/scripts/setup-account.js` still exists, demoted to an
+  SSH-only emergency/disaster-recovery tool — its `--force` flag fully
+  wipes every account (and, via cascade, every file), so it prompts with
+  the real affected-user count before doing that.
+- Sharing is owner-controlled and one-directional: a file shared with you
+  can be viewed and downloaded, never deleted or re-shared, and only the
+  owner ever sees who it's shared with. Revoking a share removes access
+  immediately.
 - Sessions: `httpOnly`, `secure`, `sameSite=strict` cookies; CSRF protection
   on all state-changing routes.
 - Rate limiting + lockout on `/api/login`, with a generic error message that
@@ -221,6 +247,8 @@ object storage, etc.) and this gets wired in as a follow-up.
   and only ever served through an authenticated endpoint — never mounted
   statically.
 - `fail2ban` watches both sshd and repeated app login failures.
+- Auto-update is off by default — an admin has to explicitly enable it in
+  Settings before a new release deploys itself.
 
 ## License
 

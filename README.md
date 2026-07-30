@@ -38,7 +38,6 @@ lumio/
 ├── frontend/            # Static dashboard
 ├── garmin-app/          # Connect IQ project
 ├── .github/workflows/    # CI, release, deploy
-├── CLAUDE.md
 └── README.md
 ```
 
@@ -47,11 +46,9 @@ lumio/
 - `backend`, `frontend`, `garmin-app` — long-lived per-component branches,
   merged into `main` via PR once CI is green.
 
-See [CLAUDE.md](CLAUDE.md) for the full standing rules.
-
 ## Prerequisites
 
-- Node.js (see `backend/.nvmrc` once added) and npm
+- Node.js (see `backend/.nvmrc` for the version) and npm
 - A Connect IQ SDK install + simulator for `garmin-app/`
 - nginx and certbot ≥ 5.4 on the deploy target
 - `gh` CLI for repo/release operations (optional, convenience only)
@@ -136,18 +133,28 @@ the repo's Settings → Secrets and variables → Actions.
 ## Deployment
 
 Deployed to `/root/lumio` on the VPS, reachable at
-`https://<vps-ip>:8444` (port 8444, not 8443 — see CLAUDE.md for why).
-nginx serves `frontend/dist` as static files and proxies `/api/*` to the
-Node process on `127.0.0.1`. The Node process itself never binds to a public
-interface.
+`https://<vps-ip>:8444`. Port 8444 rather than 8443 only matters if
+something else on the box already holds 8443 - pick whichever is actually
+free on your server. nginx serves `frontend/dist` as static files and
+proxies `/api/*` to the Node process on `127.0.0.1`. The Node process
+itself never binds to a public interface.
+
+The backend runs as a dedicated, unprivileged system user via a hardened
+systemd unit (`NoNewPrivileges`, `ProtectSystem=strict` with the data
+directory as the one writable exception, `PrivateTmp`, and more) - see
+the unit's own comments for the two hardening flags that had to be left
+off and why (`ProtectHome` conflicts with code living under `/root`;
+`MemoryDenyWriteExecute` breaks Node's V8 JIT).
 
 ## Certificate renewal
 
 TLS uses a Let's Encrypt certificate issued directly for the server's IP
-address (GA since January 2026), valid for ~160 hours. A systemd timer runs
-`certbot renew` twice daily; a separate check alerts if the certificate has
-less than 48 hours left. This is a hard requirement, not a one-time setup
-step — see CLAUDE.md.
+address (GA since January 2026), valid for ~160 hours. Certbot (install via
+snap, not apt - Ubuntu's packaged version is too old to support IP
+certificates) sets up its own twice-daily renewal timer; run an additional
+check that alerts if less than 48 hours remain, since a silent renewal
+failure has a much smaller safety margin than it would with a normal
+90-day certificate. This is a hard requirement, not a one-time setup step.
 
 ## Backup & restore
 

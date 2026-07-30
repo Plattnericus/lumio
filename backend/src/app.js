@@ -29,11 +29,9 @@ export function createApp() {
   app.use(
     pinoHttp({
       logger,
-      autoLogging: !isProduction,
-      // pino-http's default req serializer logs the raw socket address,
-      // which behind nginx is just nginx's own loopback IP - not useful
-      // for fail2ban or anything else that needs the real client. req.ip
-      // is Express's trust-proxy-aware value instead.
+      // Request logging needs to stay on in production - it's the whole
+      // point of structured logging, and fail2ban's app-login jail reads
+      // these lines to find failed attempts.
       customProps: (req) => ({ clientIp: req.ip }),
     })
   );

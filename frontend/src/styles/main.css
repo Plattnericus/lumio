@@ -206,6 +206,41 @@ a {
   line-height: 1.5;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 40px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.password-toggle:hover {
+  color: var(--text-0);
+  background: var(--bg-2);
+}
+
+.password-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+
 .field-hint svg {
   width: 12px;
   height: 12px;
@@ -661,7 +696,8 @@ a {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 280px;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 48px));
   padding: 16px 18px;
   z-index: 30;
 }
@@ -670,9 +706,22 @@ a {
   font-size: 0.8rem;
   color: var(--text-1);
   margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+/* The upload-progress toast specifically wants a single truncated line
+   for the filename - a plain info/error toast (no progress bar) should
+   wrap in full instead, since truncating something like a validation
+   message defeats the point of showing it. */
+.upload-toast:has(.progress-track) .upload-toast-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 10px;
+}
+
+.upload-toast:not(:has(.progress-track)) .upload-toast-name {
+  margin-bottom: 0;
 }
 
 .progress-track {
@@ -889,6 +938,148 @@ a {
 
 .switch.on::after {
   transform: translateX(19px);
+}
+
+/* ---------- Lightbox ---------- */
+
+.file-thumb[data-open-lightbox] {
+  cursor: pointer;
+}
+
+.lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+
+.lightbox-close:hover,
+.lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+}
+
+.lightbox-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+}
+
+.lightbox-nav svg {
+  width: 22px;
+  height: 22px;
+}
+
+.lightbox-prev {
+  left: 20px;
+}
+
+.lightbox-next {
+  right: 20px;
+}
+
+.lightbox-stage {
+  max-width: 90vw;
+  max-height: 78vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-stage img {
+  max-width: 90vw;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
+}
+
+.lightbox-name {
+  color: #fff;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lightbox-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.lightbox-actions .btn {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: transparent;
+  color: #fff;
+}
+
+.lightbox-actions .btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.lightbox-actions .btn-danger:hover {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .lightbox-nav {
+    width: 38px;
+    height: 38px;
+  }
+  .lightbox-nav svg {
+    width: 18px;
+    height: 18px;
+  }
+  .lightbox-prev {
+    left: 8px;
+  }
+  .lightbox-next {
+    right: 8px;
+  }
 }
 
 @media (max-width: 860px) {

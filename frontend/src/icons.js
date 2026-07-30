@@ -129,6 +129,30 @@ export const iconKey = `
   <path d="M11 12.5 18.5 5M15.5 8.5l2 2M18 6l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
+export const iconChevronLeft = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconChevronRight = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconEye = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+    stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+</svg>`;
+
+export const iconEyeOff = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M3.5 3.5l17 17M9.9 5.7A10.8 10.8 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15.6 15.6 0 0 1-3.2 4M6.4 6.9C3.6 8.9 2.5 12 2.5 12S6 18.5 12 18.5a9.6 9.6 0 0 0 3.3-.6"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M9.9 12a2.1 2.1 0 0 0 3 2.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
 const ICONS_BY_EXTENSION = {
   jpg: iconImage,
   png: iconImage,

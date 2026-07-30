@@ -98,16 +98,30 @@ value-free template — never commit the real file).
 
 ## CI/CD & release process
 
-- Every PR runs `.github/workflows/ci.yml`, path-filtered per component:
-  lint, tests, `npm audit`. Merging into `main` requires this to pass
-  (branch protection).
+- Every PR runs `.github/workflows/ci.yml`: a `dorny/paths-filter` job
+  decides which of `backend`/`frontend`/`garmin-app` actually changed, then
+  only those jobs run (lint, tests, `npm audit`). Merging into `main`
+  requires this to pass (branch protection).
 - `release-please` watches `main`'s Conventional Commit history and opens a
   release PR with a generated `CHANGELOG.md`. Merging that PR cuts a GitHub
   Release + tag.
 - `deploy.yml` triggers on `release: published`: SSH onto the VPS, checkout
-  the tag, `npm ci --production`, restart the service, then hit
-  `/api/health`. A failed health check rolls back to the previous tag
-  automatically and fails the workflow — a bad release never stays live.
+  the tag, `npm ci --production` (backend) and a static rebuild (frontend),
+  restart the service, then poll `/api/health`. A failed health check rolls
+  back to the previously deployed commit automatically and fails the
+  workflow — a bad release never stays live.
+
+### Required GitHub Actions secrets
+
+None of these are hardcoded anywhere in the workflows - set them under
+the repo's Settings → Secrets and variables → Actions.
+
+| Secret | Purpose |
+|---|---|
+| `RELEASE_PLEASE_TOKEN` | A PAT (not the default `GITHUB_TOKEN`) for `release-please-action`. Required because a release created with the default token doesn't fire the `release: published` event `deploy.yml` waits for. |
+| `DEPLOY_SSH_KEY` | Private half of the deploy keypair (generated on the VPS - see Deployment below). |
+| `DEPLOY_SSH_USER` | The account the deploy key logs in as on the VPS. |
+| `VPS_HOST` | The VPS's public IP or hostname. |
 
 ## Deployment
 

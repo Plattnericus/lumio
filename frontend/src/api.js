@@ -38,9 +38,37 @@ export const api = {
     request("/auth/totp/confirm", { method: "POST", body: { token }, csrfToken }),
   totpDisable: (password, csrfToken) =>
     request("/auth/totp/disable", { method: "POST", body: { password }, csrfToken }),
-  listFiles: (type) => request(`/files${type ? `?type=${type}` : ""}`),
+  changePassword: (currentPassword, newPassword, csrfToken) =>
+    request("/auth/password", { method: "POST", body: { currentPassword, newPassword }, csrfToken }),
+
+  setupStatus: () => request("/setup/status"),
+  setupCreate: (username, password, setupToken) =>
+    request("/setup", { method: "POST", body: { username, password, setupToken } }),
+
+  listFiles: (type, scope) => {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (scope) params.set("scope", scope);
+    const query = params.toString();
+    return request(`/files${query ? `?${query}` : ""}`);
+  },
   deleteFile: (id, csrfToken) => request(`/files/${id}`, { method: "DELETE", csrfToken }),
+  shareFile: (id, username, csrfToken) =>
+    request(`/files/${id}/shares`, { method: "POST", body: { username }, csrfToken }),
+  listShares: (id) => request(`/files/${id}/shares`),
+  unshareFile: (id, userId, csrfToken) =>
+    request(`/files/${id}/shares/${userId}`, { method: "DELETE", csrfToken }),
+
   createPairingCode: (csrfToken) => request("/pairing/codes", { method: "POST", csrfToken }),
+
+  listUsers: () => request("/admin/users"),
+  createUser: (username, password, csrfToken) =>
+    request("/admin/users", { method: "POST", body: { username, password }, csrfToken }),
+  deleteUser: (id, csrfToken) => request(`/admin/users/${id}`, { method: "DELETE", csrfToken }),
+
+  getSettings: () => request("/settings"),
+  updateSettings: (autoUpdateEnabled, csrfToken) =>
+    request("/settings", { method: "PUT", body: { autoUpdateEnabled }, csrfToken }),
 };
 
 export function downloadUrl(id) {

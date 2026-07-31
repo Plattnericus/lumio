@@ -11,13 +11,13 @@ class LumioApp extends Application.AppBase {
 
     // No second login system - a device token obtained once via the
     // pairing flow is all this app ever needs to talk to the server.
-    function getInitialView() as Array<WatchUi.Views or WatchUi.InputDelegates>? {
+    function getInitialView() as [ WatchUi.Views ] or [ WatchUi.Views, WatchUi.InputDelegates ] {
         var token = Storage.getValue("deviceToken");
         if (token != null) {
-            return [new ImageListView(), new ImageListDelegate()] as Array<WatchUi.Views or WatchUi.InputDelegates>;
+            return [new ImageListView(), new ImageListDelegate()] as [ WatchUi.Views, WatchUi.InputDelegates ];
         }
 
         var view = new PairingView();
-        return [view, new PairingDelegate(view)] as Array<WatchUi.Views or WatchUi.InputDelegates>;
+        return [view, new PairingDelegate(view)] as [ WatchUi.Views, WatchUi.InputDelegates ];
     }
 }

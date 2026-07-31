@@ -30,6 +30,42 @@ export function migrate() {
     })();
     logger.info("migrated users table: added role, promoted earliest account to admin");
   }
+
+  const hasFavorite = db.prepare("PRAGMA table_info(files)").all().some((c) => c.name === "is_favorite");
+  if (!hasFavorite) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE files ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0");
+    })();
+    logger.info("migrated files table: added is_favorite");
+  }
+
+  const hasDeletedAt = db.prepare("PRAGMA table_info(files)").all().some((c) => c.name === "deleted_at");
+  if (!hasDeletedAt) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE files ADD COLUMN deleted_at INTEGER");
+    })();
+    logger.info("migrated files table: added deleted_at");
+  }
+
+  const hasDeviceModel = db
+    .prepare("PRAGMA table_info(device_tokens)")
+    .all()
+    .some((c) => c.name === "model");
+  if (!hasDeviceModel) {
+    db.transaction(() => {
+      db.exec("ALTER TABLE device_tokens ADD COLUMN model TEXT");
+    })();
+    logger.info("migrated device_tokens table: added model");
+  }
+
+  // Unconditional and outside the guards above: by this point is_favorite
+  // and deleted_at exist on every code path, whether from a fresh
+  // schema.sql CREATE or the ALTERs just run. These can't live in
+  // schema.sql itself - CREATE TABLE IF NOT EXISTS is a no-op against an
+  // already-deployed files table, so an index referencing a column that
+  // table doesn't have yet would fail with "no such column" on upgrade.
+  db.exec("CREATE INDEX IF NOT EXISTS idx_files_deleted ON files(deleted_at)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_files_favorite ON files(owner_id, is_favorite)");
 }
 migrate();
 

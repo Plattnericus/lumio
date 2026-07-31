@@ -59,3 +59,31 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS albums (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_albums_owner ON albums(owner_id);
+
+CREATE TABLE IF NOT EXISTS album_files (
+  album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  added_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (album_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_album_files_file ON album_files(file_id);
+
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  device_label TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_webauthn_user ON webauthn_credentials(user_id);

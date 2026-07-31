@@ -22,7 +22,13 @@ class ImageListView extends WatchUi.Menu2 {
     // onHide) - a photo already seen once shows its thumbnail instantly
     // on every later visit instead of re-downloading it, since the list
     // itself now reloads on every return to this view (see onShow).
+    // Bounded, not unbounded: a watch has very little spare memory, and
+    // everyone's actual photo library lives on the server, not the
+    // device - this only ever holds a small working set of recently-seen
+    // thumbnails, evicting the oldest once the cap is hit.
+    private const MAX_CACHED_THUMBNAILS = 30;
     private var _thumbnailCache as Dictionary<Number, Graphics.BitmapReference>;
+    private var _thumbnailCacheOrder as Array<Number>;
 
     // null = all photos; otherwise a scope filter Dictionary built by
     // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
@@ -34,6 +40,7 @@ class ImageListView extends WatchUi.Menu2 {
         _filter = filter;
         _itemCount = 0;
         _thumbnailCache = {} as Dictionary<Number, Graphics.BitmapReference>;
+        _thumbnailCacheOrder = [] as Array<Number>;
         addLoadingItem();
     }
 
@@ -140,11 +147,27 @@ class ImageListView extends WatchUi.Menu2 {
         if (responseCode == 200 && data != null && _current != null) {
             var current = _current as [Number, WatchUi.MenuItem];
             current[1].setIcon(data as Graphics.BitmapReference);
-            _thumbnailCache[current[0]] = data as Graphics.BitmapReference;
+            cacheThumbnail(current[0], data as Graphics.BitmapReference);
         }
         _current = null;
         // Keep going regardless of whether that one succeeded - one
         // missing thumbnail shouldn't stall every row after it.
         loadNextThumbnail();
+    }
+
+    // Evicts the oldest cached thumbnail once the cap is hit, so this
+    // never grows unbounded no matter how large the actual library on
+    // the server is - only a small recent working set stays in memory.
+    private function cacheThumbnail(id as Number, bitmap as Graphics.BitmapReference) as Void {
+        if (!_thumbnailCache.hasKey(id)) {
+            _thumbnailCacheOrder.add(id);
+        }
+        _thumbnailCache[id] = bitmap;
+
+        while (_thumbnailCacheOrder.size() > MAX_CACHED_THUMBNAILS) {
+            var oldest = _thumbnailCacheOrder[0];
+            _thumbnailCacheOrder = _thumbnailCacheOrder.slice(1, _thumbnailCacheOrder.size());
+            _thumbnailCache.remove(oldest);
+        }
     }
 }

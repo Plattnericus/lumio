@@ -2,12 +2,12 @@ import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-class PairingView extends WatchUi.View {
+class ServerUrlView extends WatchUi.View {
     private var _status as String;
 
     function initialize() {
         View.initialize();
-        _status = "Enter the pairing code\nfrom your Lumio\ndashboard, then press Select.";
+        _status = "Enter your Lumio\nserver's address,\nthen press Select.";
     }
 
     function onUpdate(dc as Graphics.Dc) as Void {

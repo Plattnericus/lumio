@@ -1,8 +1,10 @@
-import Toybox.Application.Properties;
-import Toybox.Application.Storage;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
+// The code is typed directly on the watch now, not configured ahead of
+// time via Garmin Connect Mobile's app settings - it's short-lived and
+// single-use, so entering it right where it's needed removes a whole
+// round-trip through a phone app.
 class PairingDelegate extends WatchUi.BehaviorDelegate {
     private var _view as PairingView;
 
@@ -12,23 +14,8 @@ class PairingDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onSelect() as Boolean {
-        var code = Properties.getValue("pairingCode") as String?;
-        if (code == null || code.length() == 0) {
-            _view.setStatus("No pairing code set.\nOpen this widget's settings\nin Garmin Connect.");
-            return true;
-        }
-
-        _view.setStatus("Pairing...");
-        LumioApi.exchangePairingCode(code, method(:onExchangeResponse) as Method(responseCode as Number, data as Dictionary?) as Void);
+        var picker = new WatchUi.TextPicker("");
+        WatchUi.pushView(picker, new PairingCodeTextDelegate(_view), WatchUi.SLIDE_IMMEDIATE);
         return true;
-    }
-
-    function onExchangeResponse(responseCode as Number, data as Dictionary?) as Void {
-        if (responseCode == 200 && data != null && data.hasKey("token")) {
-            Storage.setValue("deviceToken", data.get("token"));
-            WatchUi.switchToView(new ImageListView(), new ImageListDelegate(), WatchUi.SLIDE_IMMEDIATE);
-        } else {
-            _view.setStatus("Pairing failed.\nCheck the code and\ntry again.");
-        }
     }
 }

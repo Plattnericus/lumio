@@ -153,6 +153,57 @@ export const iconEyeOff = `
   <path d="M9.9 12a2.1 2.1 0 0 0 3 2.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
+export const iconHeart = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 20.2s-7.5-4.6-9.8-9.3C.6 7.3 2.4 4 5.9 4c2 0 3.5 1.1 4.3 2.7C10.9 5.1 12.4 4 14.4 4c3.5 0 5.3 3.3 3.7 6.9-2.3 4.7-9.8 9.3-9.8 9.3Z"
+    stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconHeartFilled = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 20.2s-7.5-4.6-9.8-9.3C.6 7.3 2.4 4 5.9 4c2 0 3.5 1.1 4.3 2.7C10.9 5.1 12.4 4 14.4 4c3.5 0 5.3 3.3 3.7 6.9-2.3 4.7-9.8 9.3-9.8 9.3Z"
+    fill="currentColor"/>
+</svg>`;
+
+export const iconRestore = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M3.5 9V4M3.5 9H8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M4.8 15.3A8.5 8.5 0 1 0 6.2 6.7L3.5 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconAlbum = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="3.5" y="3.5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M8 8h12.5v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>`;
+
+export const iconSun = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/>
+  <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+    <line x1="12" y1="2" x2="12" y2="4.6"/>
+    <line x1="12" y1="19.4" x2="12" y2="22"/>
+    <line x1="2" y1="12" x2="4.6" y2="12"/>
+    <line x1="19.4" y1="12" x2="22" y2="12"/>
+    <line x1="4.9" y1="4.9" x2="6.7" y2="6.7"/>
+    <line x1="17.3" y1="17.3" x2="19.1" y2="19.1"/>
+    <line x1="19.1" y1="4.9" x2="17.3" y2="6.7"/>
+    <line x1="6.7" y1="17.3" x2="4.9" y2="19.1"/>
+  </g>
+</svg>`;
+
+export const iconMoon = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 13.6A8.5 8.5 0 1 1 10.4 4a7 7 0 0 0 9.6 9.6Z"
+    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>`;
+
+export const iconAuto = `
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/>
+  <path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor"/>
+</svg>`;
+
 const ICONS_BY_EXTENSION = {
   jpg: iconImage,
   png: iconImage,

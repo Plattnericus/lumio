@@ -35,6 +35,7 @@ class FilterMenuView extends WatchUi.Menu2 {
         deleteItem(2);
 
         if (responseCode != 200 || data == null) {
+            addItem(new WatchUi.MenuItem("Couldn't load albums", ConnectionError.describe(responseCode), :albumsError, {}));
             return;
         }
 

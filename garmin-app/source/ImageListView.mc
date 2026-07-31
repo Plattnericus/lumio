@@ -44,7 +44,7 @@ class ImageListView extends WatchUi.Menu2 {
         deleteItem(0);
 
         if (responseCode != 200 || data == null) {
-            addItem(new WatchUi.MenuItem("Couldn't load photos", null, :error, {}));
+            addItem(new WatchUi.MenuItem("Couldn't load photos", ConnectionError.describe(responseCode), :error, {}));
             return;
         }
 

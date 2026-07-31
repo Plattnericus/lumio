@@ -47,6 +47,18 @@ const listImagesForOwner = db.prepare(
 );
 const listAllForOwner = db.prepare("SELECT * FROM files WHERE owner_id = ?");
 
+// Owner-only, deliberately no deleted_at filter - toggling favorite must
+// keep working on a trashed file so restoring it brings the flag back
+// with it, matching real Photos.app behavior (trash and favorite are
+// independent states).
+const setFavorite = db.prepare("UPDATE files SET is_favorite = ? WHERE id = ? AND owner_id = ?");
+const listFavoritesForOwner = db.prepare(
+  "SELECT * FROM files WHERE owner_id = ? AND is_favorite = 1 AND deleted_at IS NULL ORDER BY uploaded_at DESC"
+);
+const listFavoriteImagesForOwner = db.prepare(
+  "SELECT * FROM files WHERE owner_id = ? AND mime_type LIKE 'image/%' AND is_favorite = 1 AND deleted_at IS NULL ORDER BY uploaded_at DESC"
+);
+
 const softDeleteFile = db.prepare(
   "UPDATE files SET deleted_at = unixepoch() WHERE id = ? AND owner_id = ? AND deleted_at IS NULL"
 );
@@ -141,6 +153,23 @@ export function listFiles(ownerId, type) {
 
 export function getFile(id, ownerId) {
   return getFileForOwner.get(id, ownerId);
+}
+
+// Owner-only, works regardless of trash state - see setFavorite's comment.
+// Returns whether a row was actually updated, so the route can 404 on a
+// file that isn't the caller's (or doesn't exist) rather than silently
+// succeeding.
+export function toggleFavorite(id, ownerId, isFavorite) {
+  const result = setFavorite.run(isFavorite ? 1 : 0, id, ownerId);
+  return result.changes > 0;
+}
+
+export function listFavorites(ownerId, type) {
+  const rows = type === "image" ? listFavoriteImagesForOwner.all(ownerId) : listFavoritesForOwner.all(ownerId);
+  if (type && type !== "image") {
+    return rows.filter((row) => row.extension === type);
+  }
+  return rows;
 }
 
 export function filePath(file) {

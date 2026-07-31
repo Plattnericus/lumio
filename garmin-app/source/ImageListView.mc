@@ -14,6 +14,8 @@ class ImageListView extends WatchUi.Menu2 {
     // _currentThumbnailItem tracks whichever one is actually in flight.
     private var _thumbnailQueue as Array<[Number, WatchUi.MenuItem]>;
     private var _currentThumbnailItem as WatchUi.MenuItem?;
+    private var _filter as Dictionary?;
+    private var _loadStarted as Boolean;
 
     // null = all photos; otherwise a scope filter Dictionary built by
     // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
@@ -22,9 +24,31 @@ class ImageListView extends WatchUi.Menu2 {
         Menu2.initialize({ :title => "Lumio Photos" });
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
         _currentThumbnailItem = null;
+        _filter = filter;
+        _loadStarted = false;
         addItem(new WatchUi.MenuItem("Loading...", null, :loading, {}));
+    }
+
+    // The actual fetch starts here, not in initialize() - this view's
+    // constructor runs (and used to fire the fetch) *before*
+    // WatchUi.pushView actually swaps views, which is also before the
+    // previous view's own onHide() runs. Since onHide() below cancels
+    // every outstanding request (Communications.cancelAllRequests() is
+    // global, not scoped to one view), starting the fetch in initialize()
+    // meant the previous view's onHide() immediately cancelled the
+    // request this view had just started - surfaced as "Request was
+    // cancelled (-1003)" on literally every navigation into this view.
+    // onShow() only runs after the outgoing view's onHide() has already
+    // fired, so there's nothing left to cancel by the time this starts.
+    // _loadStarted guards against onShow() firing again later (e.g.
+    // returning from a fullscreen photo) and re-fetching from scratch.
+    function onShow() as Void {
+        if (_loadStarted) {
+            return;
+        }
+        _loadStarted = true;
         LumioApi.fetchImageList(
-            filter,
+            _filter,
             method(:onImagesLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
         );
     }
@@ -32,8 +56,7 @@ class ImageListView extends WatchUi.Menu2 {
     // However this view stops being the visible one - backing out, or a
     // FullscreenImageView getting pushed on top - abandon anything still
     // in flight so it doesn't pile up against whatever request the next
-    // view makes. This is the exact scenario that produced "stuck at
-    // Loading" and "Couldn't load photo (404)" after repeated back/forth.
+    // view makes.
     function onHide() as Void {
         Communications.cancelAllRequests();
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;

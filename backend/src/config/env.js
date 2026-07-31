@@ -1,7 +1,11 @@
 import path from "node:path";
 import "dotenv/config";
 
-const required = ["SESSION_SECRET"];
+// WEBAUTHN_RP_ID/WEBAUTHN_ORIGIN have safe dev-only defaults above
+// ("localhost" / "http://localhost:5173") but no safe default in
+// production - a wrong guess there would either break every passkey
+// ceremony or (worse) validate against the wrong origin/RP ID.
+const required = ["SESSION_SECRET", "WEBAUTHN_RP_ID", "WEBAUTHN_ORIGIN"];
 
 function readEnv() {
   // Computed up front (rather than read back off `env.nodeEnv`, which

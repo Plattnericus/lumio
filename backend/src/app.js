@@ -13,6 +13,7 @@ import { setupRouter } from "./routes/setup.js";
 import { adminRouter } from "./routes/admin.js";
 import { settingsRouter } from "./routes/settings.js";
 import { filesRouter } from "./routes/files.js";
+import { albumsRouter } from "./routes/albums.js";
 import { pairingRouter } from "./routes/pairing.js";
 import { garminRouter } from "./routes/garmin.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
@@ -76,6 +77,7 @@ export function createApp() {
   app.use("/api/admin", adminRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/files", filesRouter);
+  app.use("/api/albums", albumsRouter);
   app.use("/api/pairing", pairingRouter);
   app.use("/api/garmin", garminRouter);
 

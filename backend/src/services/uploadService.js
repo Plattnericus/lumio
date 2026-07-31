@@ -78,11 +78,24 @@ const listTrashImagesForOwner = db.prepare(
 // System-wide sweep, no owner filter - retentionSeconds is bound as a
 // parameter rather than interpolated so retention stays configurable
 // without touching the prepared statement itself.
-const listExpiredTrash = db.prepare(
-  "SELECT * FROM files WHERE deleted_at IS NOT NULL AND deleted_at < unixepoch() - ?"
-);
+//
+// Single DELETE...RETURNING rather than a SELECT followed by a separate
+// DELETE - the two-step version had a real TOCTOU gap: the SELECT would
+// capture a file as "expired", then while purgeExpiredTrash awaited
+// unlinkFileAssets() for earlier rows in the batch (a real event-loop
+// yield point), a concurrent restore could flip that same file's
+// deleted_at back to NULL. The old, separately-run DELETE re-evaluated
+// the same WHERE clause, so it correctly skipped the now-restored row -
+// but its disk bytes (original/thumbnail/preview) had already been
+// unlinked by the SELECT-driven loop before the DELETE ever ran, leaving
+// a "restored" file with a live DB row and no bytes behind it. Doing the
+// identification and removal as one atomic, synchronous statement (better-
+// sqlite3 has no async gap mid-statement) means a restore either lands
+// fully before this runs (row no longer matches, isn't touched at all) or
+// fully after (row's already gone, restoreFile's own UPDATE no-ops) -
+// there's no window where a row can be both "restored" and "unlinked".
 const deleteExpiredTrash = db.prepare(
-  "DELETE FROM files WHERE deleted_at IS NOT NULL AND deleted_at < unixepoch() - ?"
+  "DELETE FROM files WHERE deleted_at IS NOT NULL AND deleted_at < unixepoch() - ? RETURNING *"
 );
 
 export class RejectedUploadError extends Error {
@@ -244,10 +257,14 @@ export function listAllOwnedFiles(ownerId) {
 // script. Returns the number of files actually purged.
 export async function purgeExpiredTrash(retentionDays) {
   const retentionSeconds = retentionDays * 86400;
-  const expired = listExpiredTrash.all(retentionSeconds);
-  for (const file of expired) {
+  // The DELETE itself is what decides which rows are "expired" - it runs
+  // as a single synchronous statement, so nothing (e.g. a concurrent
+  // restore request) can interleave between "decide what's expired" and
+  // "remove it". Only rows this statement actually removed get their disk
+  // assets unlinked below.
+  const purged = deleteExpiredTrash.all(retentionSeconds);
+  for (const file of purged) {
     await unlinkFileAssets(file);
   }
-  deleteExpiredTrash.run(retentionSeconds);
-  return expired.length;
+  return purged.length;
 }

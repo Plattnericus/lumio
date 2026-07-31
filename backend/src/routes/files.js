@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   deleteFile,
   filePath,
+  listFavorites,
   listFiles,
   listTrash,
   previewPath,
@@ -11,6 +12,7 @@ import {
   restoreFile,
   storeUpload,
   thumbnailPath,
+  toggleFavorite,
 } from "../services/uploadService.js";
 import {
   getAccessibleFile,
@@ -32,6 +34,10 @@ const upload = multer({
 });
 
 function toPublicFile(file) {
+  // A row that came from the shared-with-me join carries owner_username -
+  // the scope=mine/favorites/trash paths do no such join, so this is a
+  // reliable signal that the row is someone else's file shared with us.
+  const isShared = Boolean(file.owner_username);
   return {
     id: file.id,
     originalName: file.original_name,
@@ -40,6 +46,10 @@ function toPublicFile(file) {
     sizeBytes: file.size_bytes,
     hasThumbnail: Boolean(file.has_thumbnail),
     uploadedAt: file.uploaded_at,
+    // Favorite is owner-only - never present (or toggleable) on a
+    // shared-with-me row, the same way sharedBy/sharedAt only ever show up
+    // the other direction.
+    ...(!isShared ? { isFavorite: Boolean(file.is_favorite) } : {}),
     // Only present for rows that came from the shared-with-me join -
     // the scope=mine path (the common case) does no join at all.
     ...(file.owner_username ? { sharedBy: file.owner_username, sharedAt: file.shared_at } : {}),
@@ -62,6 +72,10 @@ filesRouter.get("/", (req, res) => {
 
   if (scope === "shared") {
     return res.json(listFilesSharedWithMe(req.session.userId, type).map(toPublicFile));
+  }
+
+  if (scope === "favorites") {
+    return res.json(listFavorites(req.session.userId, type).map(toPublicFile));
   }
 
   if (scope === "trash") {
@@ -140,6 +154,21 @@ filesRouter.post("/:id/restore", csrfProtection, (req, res) => {
 filesRouter.delete("/:id/forever", csrfProtection, async (req, res) => {
   const purged = await purgeFile(Number(req.params.id), req.session.userId);
   if (!purged) return res.status(404).json({ error: "Not found" });
+  res.status(204).end();
+});
+
+// Owner-only, and deliberately works even while the file is trashed - see
+// toggleFavorite's comment in uploadService.js. A trashed favorite is
+// still hidden from scope=favorites (and everywhere else) until restored,
+// but the flag itself isn't cleared by trashing.
+filesRouter.put("/:id/favorite", csrfProtection, (req, res) => {
+  const { favorite } = req.body || {};
+  if (typeof favorite !== "boolean") {
+    return res.status(400).json({ error: "favorite must be a boolean" });
+  }
+
+  const updated = toggleFavorite(Number(req.params.id), req.session.userId, favorite);
+  if (!updated) return res.status(404).json({ error: "Not found" });
   res.status(204).end();
 });
 

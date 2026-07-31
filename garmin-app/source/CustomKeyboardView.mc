@@ -19,8 +19,16 @@ class CustomKeyboardView extends WatchUi.View {
     private var _switchLabel as String?;
     private var _keyRects as Array<[Number, Number, Number, Number]>; // [x, y, w, h] per key, index-matched to _keys + the optional switch key + the two action keys appended at the end
 
-    private const BACKSPACE = "⌫";
-    private const CONFIRM = "✓";
+    // Internal sentinels only - never drawn as text. Control characters
+    // guaranteed to never collide with a real, typeable key. Symbol
+    // glyphs like ⌫/✓ looked correct in the editor but rendered as
+    // missing-glyph tofu on-device (confirmed by hand) - Monkey C's
+    // system font has inconsistent Unicode coverage even within the
+    // "safe" Basic Multilingual Plane, so these two keys are drawn as
+    // hand-built vector icons instead (see drawActionIcon), which render
+    // identically regardless of what the font supports.
+    private const BACKSPACE = "";
+    private const CONFIRM = "";
     // vivoactive6 is 390x390 round (confirmed against Garmin's compatible-
     // devices reference and the SDK's own per-device compiler.json/
     // simulator.json) - past this many characters, FONT_SMALL at the
@@ -155,6 +163,11 @@ class CustomKeyboardView extends WatchUi.View {
         // chord math alone would squeeze it down to an unusably thin sliver.
         var minHalfWidth = radius * 0.35;
 
+        // Small gap between keycaps so they read as distinct rounded chips
+        // rather than a touching grid of bordered cells.
+        var gutter = 3;
+        var cornerRadius = 6;
+
         _keyRects = [] as Array<[Number, Number, Number, Number]>;
 
         for (var row = 0; row < rows; row++) {
@@ -171,32 +184,74 @@ class CustomKeyboardView extends WatchUi.View {
                 rowWidth = halfWidth * 2;
             }
 
-            var rowLeft = centerX - rowWidth / 2;
-            var keyW = rowWidth / _cols;
+            // A short final row (fewer than _cols keys) spreads evenly
+            // across this same row width instead of leaving a gap on one
+            // side - its keys end up a bit wider, not left-packed.
+            var keysInRow = _cols;
+            if ((row + 1) * _cols > slots.size()) {
+                keysInRow = slots.size() - row * _cols;
+            }
 
-            for (var col = 0; col < _cols; col++) {
+            var rowLeft = centerX - rowWidth / 2;
+            var keyW = rowWidth / keysInRow;
+
+            for (var col = 0; col < keysInRow; col++) {
                 var i = row * _cols + col;
-                if (i >= slots.size()) {
-                    break;
-                }
 
                 var x = rowLeft + col * keyW;
                 var y = rowTop;
+                var slot = slots[i];
 
                 _keyRects.add([x.toNumber(), y.toNumber(), keyW.toNumber(), keyH.toNumber()]);
 
-                dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-                dc.drawRectangle(x.toNumber() + 1, y.toNumber() + 1, keyW.toNumber() - 2, keyH.toNumber() - 2);
+                var capX = x.toNumber() + gutter;
+                var capY = y.toNumber() + gutter;
+                var capW = keyW.toNumber() - gutter * 2;
+                var capH = keyH.toNumber() - gutter * 2;
+                var centerCapX = capX + capW / 2;
+                var centerCapY = capY + capH / 2;
+
+                var isConfirmKey = isConfirm(slot);
+                dc.setColor(isConfirmKey ? Graphics.COLOR_BLUE : Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+                dc.fillRoundedRectangle(capX, capY, capW, capH, cornerRadius);
 
                 dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-                dc.drawText(
-                    (x + keyW / 2).toNumber(),
-                    (y + keyH / 2).toNumber(),
-                    Graphics.FONT_TINY,
-                    slots[i],
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
-                );
+                if (isBackspace(slot)) {
+                    drawBackspaceIcon(dc, centerCapX, centerCapY, capW, capH);
+                } else if (isConfirmKey) {
+                    drawCheckmarkIcon(dc, centerCapX, centerCapY, capW, capH);
+                } else {
+                    dc.drawText(
+                        centerCapX,
+                        centerCapY,
+                        Graphics.FONT_TINY,
+                        slot,
+                        Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+                    );
+                }
             }
         }
+    }
+
+    // Drawn as vector shapes, not text/emoji glyphs - Monkey C's system
+    // font has inconsistent Unicode coverage even for "safe" BMP symbol
+    // characters (confirmed by hand: ⌫/✓ rendered as missing-glyph tofu
+    // on-device), so a real line-drawn icon is the only way to guarantee
+    // these two keys look the same on every device.
+    private function drawBackspaceIcon(dc as Graphics.Dc, cx as Number, cy as Number, capW as Number, capH as Number) as Void {
+        var halfW = (capW * 0.22).toNumber();
+        var halfH = (capH * 0.16).toNumber();
+        // A leftward chevron plus a trailing bar - the universal "delete
+        // back" glyph shape.
+        dc.drawLine(cx + halfW, cy - halfH, cx - halfW, cy);
+        dc.drawLine(cx - halfW, cy, cx + halfW, cy + halfH);
+    }
+
+    private function drawCheckmarkIcon(dc as Graphics.Dc, cx as Number, cy as Number, capW as Number, capH as Number) as Void {
+        var shortLeg = (capW * 0.14).toNumber();
+        var longLeg = (capW * 0.26).toNumber();
+        var riseH = (capH * 0.16).toNumber();
+        dc.drawLine(cx - longLeg, cy, cx - longLeg + shortLeg, cy + riseH);
+        dc.drawLine(cx - longLeg + shortLeg, cy + riseH, cx + longLeg, cy - riseH);
     }
 }

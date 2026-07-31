@@ -1,7 +1,7 @@
-import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
+import Toybox.Timer;
 import Toybox.WatchUi;
 
 class FullscreenImageView extends WatchUi.View {
@@ -9,6 +9,12 @@ class FullscreenImageView extends WatchUi.View {
     private var _bitmap as Graphics.BitmapReference?;
     private var _loading as Boolean;
     private var _errorCode as Number?;
+    // Guards against a stale callback (already handled by the timeout
+    // below) and lets the timeout know whether it still needs to act -
+    // see ImageListView's _awaitingList for the full reasoning.
+    private var _awaitingImage as Boolean;
+    private var _timeoutTimer as Timer.Timer?;
+    private const LOAD_TIMEOUT_MS = 12000;
 
     // Zoom/pan state. Connect IQ has no pinch/multi-touch gesture API -
     // InputDelegate is single-touch-point only, even on a touch-first
@@ -28,6 +34,8 @@ class FullscreenImageView extends WatchUi.View {
         _zoomLevel = 1;
         _offsetX = 0;
         _offsetY = 0;
+        _awaitingImage = false;
+        _timeoutTimer = null;
     }
 
     function onShow() as Void {
@@ -36,24 +44,53 @@ class FullscreenImageView extends WatchUi.View {
         // too-small image, and there's no reason to ask for more pixels
         // than the screen can show either.
         var settings = System.getDeviceSettings();
+        _awaitingImage = true;
         LumioApi.fetchImage(
             _imageId,
             settings.screenWidth,
             settings.screenHeight,
             method(:onImageLoaded) as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void
         );
+
+        _timeoutTimer = new Timer.Timer();
+        (_timeoutTimer as Timer.Timer).start(method(:onImageTimeout) as Method() as Void, LOAD_TIMEOUT_MS, false);
     }
 
-    // Same reasoning as ImageListView's onHide: abandon this fetch if it's
-    // still in flight when the view is left, rather than letting it pile
-    // up against whatever the next view requests (Connect IQ limits
-    // parallel Communications requests, confirmed against the official
-    // docs' cancelAllRequests() description).
+    // Doesn't force-cancel the fetch here (used to, via
+    // Communications.cancelAllRequests() - see ImageListView.onHide's
+    // comment for exactly why that turned out to be unreliable and was
+    // removed everywhere). This view only ever has one request in
+    // flight, so letting an abandoned one finish quietly in the
+    // background - its result never looked at again once this view is
+    // gone - is harmless.
     function onHide() as Void {
-        Communications.cancelAllRequests();
+        _awaitingImage = false;
+        if (_timeoutTimer != null) {
+            (_timeoutTimer as Timer.Timer).stop();
+            _timeoutTimer = null;
+        }
+    }
+
+    function onImageTimeout() as Void {
+        _timeoutTimer = null;
+        if (!_awaitingImage) {
+            return;
+        }
+        onImageLoaded(ConnectionError.CLIENT_TIMEOUT, null);
     }
 
     function onImageLoaded(responseCode as Number, data as Graphics.BitmapReference?) as Void {
+        if (!_awaitingImage) {
+            // Stale - already handled (timed out) or from a view that's
+            // no longer showing. Ignore it entirely.
+            return;
+        }
+        _awaitingImage = false;
+        if (_timeoutTimer != null) {
+            (_timeoutTimer as Timer.Timer).stop();
+            _timeoutTimer = null;
+        }
+
         _loading = false;
         if (responseCode == 200 && data != null) {
             _bitmap = data;

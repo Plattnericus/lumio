@@ -1,16 +1,15 @@
-import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.PersistedContent;
+import Toybox.Timer;
 import Toybox.WatchUi;
 
 class ImageListView extends WatchUi.Menu2 {
     // Thumbnails are loaded one at a time, not all at once - Connect IQ
     // limits how many Communications requests can be active in parallel
-    // (confirmed against the official docs' own cancelAllRequests()
-    // description), and firing one per row simultaneously blew right
-    // past that. Each queue entry is [id, item]; _current tracks
-    // whichever [id, item] is actually in flight right now.
+    // (confirmed against the official docs). Each queue entry is
+    // [id, item]; _current tracks whichever [id, item] is actually in
+    // flight right now.
     private var _thumbnailQueue as Array<[Number, WatchUi.MenuItem]>;
     private var _current as [Number, WatchUi.MenuItem]?;
     private var _filter as Dictionary?;
@@ -18,17 +17,29 @@ class ImageListView extends WatchUi.Menu2 {
     // tracks how many items are currently added so onShow() can remove
     // exactly that many via repeated deleteItem(0) calls before reloading.
     private var _itemCount as Number;
-    // Keyed by photo id, kept across reloads (not cleared in onShow/
-    // onHide) - a photo already seen once shows its thumbnail instantly
-    // on every later visit instead of re-downloading it, since the list
-    // itself now reloads on every return to this view (see onShow).
-    // Bounded, not unbounded: a watch has very little spare memory, and
-    // everyone's actual photo library lives on the server, not the
-    // device - this only ever holds a small working set of recently-seen
-    // thumbnails, evicting the oldest once the cap is hit.
+    // Keyed by photo id, kept across reloads - a photo already seen once
+    // shows its thumbnail instantly on every later visit instead of
+    // re-downloading it, since the list itself reloads on every return
+    // to this view (see onShow). Bounded, not unbounded: a watch has
+    // very little spare memory, and the real photo library lives on the
+    // server, not the device.
     private const MAX_CACHED_THUMBNAILS = 30;
     private var _thumbnailCache as Dictionary<Number, Graphics.BitmapReference>;
     private var _thumbnailCacheOrder as Array<Number>;
+
+    // Whether the list request started by the most recent onShow() is
+    // still outstanding. Used two ways: (1) onImagesLoaded ignores a
+    // callback that arrives after this is already false (a stale
+    // response - already handled by a timeout, or left over from a view
+    // that's no longer active); (2) the timeout below only fires the
+    // "couldn't load" fallback if a real response genuinely never
+    // arrived at all, which does happen - Connect IQ can silently drop a
+    // callback for an abandoned request with no error delivered, which
+    // otherwise leaves "Loading..." on screen forever with no way to
+    // recover short of restarting the whole app.
+    private var _awaitingList as Boolean;
+    private var _timeoutTimer as Timer.Timer?;
+    private const LOAD_TIMEOUT_MS = 12000;
 
     // null = all photos; otherwise a scope filter Dictionary built by
     // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
@@ -41,6 +52,8 @@ class ImageListView extends WatchUi.Menu2 {
         _itemCount = 0;
         _thumbnailCache = {} as Dictionary<Number, Graphics.BitmapReference>;
         _thumbnailCacheOrder = [] as Array<Number>;
+        _awaitingList = false;
+        _timeoutTimer = null;
         addLoadingItem();
     }
 
@@ -56,12 +69,10 @@ class ImageListView extends WatchUi.Menu2 {
     // trashed, or deleted via the web dashboard while you're browsing on
     // the watch would keep showing as a valid row indefinitely - tapping
     // it would 404 every time, with no way to recover short of
-    // restarting the app. This also runs after the outgoing view's
-    // onHide() has already fired (see that comment below), so there's
-    // nothing left over to cancel this fetch. The thumbnail cache is
-    // deliberately NOT cleared here - only the metadata (name, whether a
-    // photo still exists at all) needs to be fresh every time, not the
-    // actual pixels, which don't change for a given photo id.
+    // restarting the app. The thumbnail cache is deliberately NOT
+    // cleared here - only the metadata (name, whether a photo still
+    // exists at all) needs to be fresh every time, not the actual
+    // pixels, which don't change for a given photo id.
     function onShow() as Void {
         while (_itemCount > 0) {
             deleteItem(0);
@@ -70,23 +81,64 @@ class ImageListView extends WatchUi.Menu2 {
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
         _current = null;
         addLoadingItem();
+
+        _awaitingList = true;
         LumioApi.fetchImageList(
             _filter,
             method(:onImagesLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
         );
+
+        if (_timeoutTimer != null) {
+            (_timeoutTimer as Timer.Timer).stop();
+        }
+        _timeoutTimer = new Timer.Timer();
+        (_timeoutTimer as Timer.Timer).start(method(:onListTimeout) as Method() as Void, LOAD_TIMEOUT_MS, false);
     }
 
-    // However this view stops being the visible one - backing out, or a
-    // FullscreenImageView getting pushed on top - abandon anything still
-    // in flight so it doesn't pile up against whatever request the next
-    // view makes (Connect IQ limits parallel Communications requests).
+    // This view no longer force-cancels outstanding requests here. It
+    // used to (Communications.cancelAllRequests()), on the reasoning that
+    // an abandoned request would otherwise pile up against whatever the
+    // next view fetches - but that cancellation is global, not scoped to
+    // this view, and exactly when it runs relative to the next view's
+    // own onShow() turned out not to be reliable: it intermittently
+    // cancelled a request the *next* view had only just started,
+    // surfacing as spurious "cancelled"/"not found" errors on otherwise
+    // valid photos. Each view here only ever has one request in flight
+    // at a time, so letting an abandoned one finish quietly in the
+    // background (its result is simply never looked at again) is
+    // harmless, and safer than a global cancel with unpredictable timing.
     function onHide() as Void {
-        Communications.cancelAllRequests();
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
         _current = null;
+        _awaitingList = false;
+        if (_timeoutTimer != null) {
+            (_timeoutTimer as Timer.Timer).stop();
+            _timeoutTimer = null;
+        }
+    }
+
+    function onListTimeout() as Void {
+        _timeoutTimer = null;
+        if (!_awaitingList) {
+            return;
+        }
+        onImagesLoaded(ConnectionError.CLIENT_TIMEOUT, null);
     }
 
     function onImagesLoaded(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void {
+        if (!_awaitingList) {
+            // Stale - already handled (timed out) or left over from a
+            // load this view no longer cares about. Ignore it entirely
+            // rather than risk touching items that don't match what
+            // triggered this response.
+            return;
+        }
+        _awaitingList = false;
+        if (_timeoutTimer != null) {
+            (_timeoutTimer as Timer.Timer).stop();
+            _timeoutTimer = null;
+        }
+
         deleteItem(0);
         _itemCount -= 1;
 

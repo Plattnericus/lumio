@@ -9,7 +9,20 @@ import Toybox.Lang;
 // platform's own negative error constants, since both are valid values
 // for the same responseCode parameter.
 module ConnectionError {
+    // Not a real Connect IQ constant - a locally-made-up sentinel for
+    // "the response never arrived at all within our own timeout window."
+    // Connect IQ can silently drop a callback for an abandoned request
+    // with no error delivered, which otherwise leaves "Loading..." on
+    // screen forever; using a code clearly outside the platform's own
+    // range (rather than reusing e.g. -1) keeps this message honest
+    // about what actually happened, instead of implying a real
+    // Bluetooth-layer error occurred when none was ever reported.
+    const CLIENT_TIMEOUT = -777777;
+
     function describe(responseCode as Number) as String {
+        if (responseCode == CLIENT_TIMEOUT) {
+            return "Timed out waiting for a response";
+        }
         if (responseCode == 401) {
             return "Not paired - re-pair this watch (401)";
         }

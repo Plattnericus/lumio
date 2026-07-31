@@ -1,6 +1,10 @@
 import { api, downloadUrl, previewUrl, thumbnailUrl, uploadFile } from "./api.js";
 import { wirePasswordToggles } from "./setup.js";
+import { groupFilesByDate } from "./gridGrouping.js";
+import { cycleTheme, getTheme } from "./theme.js";
 import {
+  iconAlbum,
+  iconAuto,
   iconBrand,
   iconChevronLeft,
   iconChevronRight,
@@ -9,11 +13,16 @@ import {
   iconEye,
   iconForExtension,
   iconGear,
+  iconHeart,
+  iconHeartFilled,
   iconKey,
   iconLibrary,
   iconLogout,
+  iconMoon,
+  iconRestore,
   iconShare,
   iconShield,
+  iconSun,
   iconTrash,
   iconUpload,
   iconUsers,
@@ -29,8 +38,17 @@ const FILTERS = [
 ];
 
 const SCOPE_TITLES = {
-  mine: "My Files",
+  mine: "Library",
+  favorites: "Favorites",
   shared: "Shared with Me",
+  trash: "Recently Deleted",
+};
+
+const THEME_ICONS = { light: iconSun, dark: iconMoon, auto: iconAuto };
+const THEME_LABELS = {
+  light: "Theme: Light (tap for Dark)",
+  dark: "Theme: Dark (tap for Auto)",
+  auto: "Theme: Auto (tap for Light)",
 };
 
 export function mountDashboard(root, session, onLogout) {
@@ -40,6 +58,8 @@ export function mountDashboard(root, session, onLogout) {
     username: session.username,
     role: session.role,
     scope: "mine",
+    albumId: null,
+    albumName: "",
     filter: "",
     currentFiles: [],
   };
@@ -51,14 +71,22 @@ export function mountDashboard(root, session, onLogout) {
   function render() {
     closeLightbox();
     closeModal();
+    const currentTheme = getTheme();
+
     root.innerHTML = `
       <aside class="sidebar">
         <div class="sidebar-brand"><div class="brand">${iconBrand}<span>Lumio</span></div></div>
 
         <nav class="sidebar-nav">
           <div class="nav-section-label">Library</div>
-          <button class="nav-item${state.scope === "mine" ? " active" : ""}" data-scope="mine">${iconLibrary}<span>My Files</span></button>
+          <button class="nav-item${state.scope === "mine" ? " active" : ""}" data-scope="mine">${iconLibrary}<span>Library</span></button>
+          <button class="nav-item${state.scope === "favorites" ? " active" : ""}" data-scope="favorites">${iconHeart}<span>Favorites</span></button>
           <button class="nav-item${state.scope === "shared" ? " active" : ""}" data-scope="shared">${iconUsers}<span>Shared with Me</span></button>
+
+          <div class="nav-section-label">Albums</div>
+          <div class="nav-albums-list" id="nav-albums-list"></div>
+
+          <button class="nav-item${state.scope === "trash" ? " active" : ""}" data-scope="trash">${iconTrash}<span>Recently Deleted</span></button>
         </nav>
 
         <div class="sidebar-footer">
@@ -72,6 +100,7 @@ export function mountDashboard(root, session, onLogout) {
               <div class="sidebar-user-name">${escapeHtml(state.username)}</div>
               <div class="role-badge${state.role === "admin" ? " admin" : ""}">${state.role === "admin" ? "Admin" : "Member"}</div>
             </div>
+            <button class="btn btn-icon" id="btn-theme" title="${THEME_LABELS[currentTheme]}">${THEME_ICONS[currentTheme]}</button>
             <button class="btn btn-icon" id="btn-logout" title="Log out">${iconLogout}</button>
           </div>
         </div>
@@ -79,7 +108,7 @@ export function mountDashboard(root, session, onLogout) {
 
       <main class="content">
         <div class="content-toolbar">
-          <h1>${SCOPE_TITLES[state.scope]}</h1>
+          <h1>${escapeHtml(scopeTitle())}</h1>
           <div class="content-toolbar-actions">
             <button class="btn btn-primary" id="btn-upload">${iconUpload}<span>Upload</span></button>
           </div>
@@ -88,7 +117,7 @@ export function mountDashboard(root, session, onLogout) {
         <div class="filters" id="filters"></div>
 
         <div class="dropzone" id="dropzone">
-          <div class="grid" id="grid"></div>
+          <div id="grid"></div>
         </div>
       </main>
 
@@ -103,6 +132,12 @@ export function mountDashboard(root, session, onLogout) {
     wireDropzone();
     wireHeaderActions();
     loadFiles();
+    loadAlbums();
+  }
+
+  function scopeTitle() {
+    if (state.scope === "album") return state.albumName || "Album";
+    return SCOPE_TITLES[state.scope] || "Library";
   }
 
   function wireNav() {
@@ -119,6 +154,55 @@ export function mountDashboard(root, session, onLogout) {
     root.querySelector("#nav-account").addEventListener("click", openAccountModal);
     root.querySelector("#nav-admin")?.addEventListener("click", openAdminModal);
     root.querySelector("#btn-upload").addEventListener("click", () => root.querySelector("#file-input").click());
+    root.querySelector("#btn-theme").addEventListener("click", () => {
+      const next = cycleTheme();
+      const btn = root.querySelector("#btn-theme");
+      btn.innerHTML = THEME_ICONS[next];
+      btn.title = THEME_LABELS[next];
+    });
+  }
+
+  async function loadAlbums() {
+    const listEl = root.querySelector("#nav-albums-list");
+    if (!listEl) return;
+
+    let albums;
+    try {
+      albums = await api.listAlbums();
+    } catch {
+      // Albums (a separate, concurrent backend PR) may not exist in this
+      // environment yet, or the request failed for some other reason -
+      // either way an empty list is a fine fallback for a best-effort,
+      // still-optional sidebar section.
+      albums = [];
+    }
+    if (!listEl.isConnected) return; // the view may have re-rendered while this was in flight
+
+    if (!Array.isArray(albums) || albums.length === 0) {
+      listEl.innerHTML = `<div class="nav-albums-empty">No albums yet</div>`;
+      return;
+    }
+
+    listEl.innerHTML = albums
+      .map(
+        (album) => `
+          <button class="nav-item${state.scope === "album" && state.albumId === album.id ? " active" : ""}" data-album-id="${album.id}" data-album-name="${escapeHtml(album.name)}">
+            ${iconAlbum}<span>${escapeHtml(album.name)}</span>
+          </button>
+        `
+      )
+      .join("");
+
+    listEl.querySelectorAll("[data-album-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const albumId = Number(btn.dataset.albumId);
+        if (state.scope === "album" && state.albumId === albumId) return;
+        state.scope = "album";
+        state.albumId = albumId;
+        state.albumName = btn.dataset.albumName;
+        render();
+      });
+    });
   }
 
   function renderFilters() {
@@ -141,7 +225,8 @@ export function mountDashboard(root, session, onLogout) {
     const grid = root.querySelector("#grid");
     grid.innerHTML = `<p class="empty-state">Loading...</p>`;
     try {
-      const files = await api.listFiles(state.filter, state.scope);
+      const albumId = state.scope === "album" ? state.albumId : undefined;
+      const files = await api.listFiles(state.filter, state.scope, albumId);
       state.currentFiles = files;
       renderGrid(files);
     } catch (err) {
@@ -149,18 +234,43 @@ export function mountDashboard(root, session, onLogout) {
     }
   }
 
+  function emptyStateMessage() {
+    if (state.scope === "shared") return "Nothing has been shared with you yet.";
+    if (state.scope === "favorites") return "No favorites yet. Tap the heart on a file to add one.";
+    if (state.scope === "trash") return "Recently Deleted is empty.";
+    if (state.scope === "album") return "This album is empty.";
+    return "No files yet. Drag files here or use the upload button.";
+  }
+
+  // Files arrive already sorted newest-first, but by different timestamp
+  // fields depending on scope (see the backend's ORDER BY per scope) -
+  // group by whichever field matches how the list is actually sorted, so
+  // the date-range headers line up with the order the cards appear in.
+  function groupingTimestamp(file) {
+    if (state.scope === "trash") return file.deletedAt;
+    if (state.scope === "shared") return file.sharedAt || file.uploadedAt;
+    return file.uploadedAt;
+  }
+
   function renderGrid(files) {
     const grid = root.querySelector("#grid");
     if (files.length === 0) {
-      grid.innerHTML = `<p class="empty-state">${
-        state.scope === "shared"
-          ? "Nothing has been shared with you yet."
-          : "No files yet. Drag files here or use the upload button."
-      }</p>`;
+      grid.innerHTML = `<p class="empty-state">${emptyStateMessage()}</p>`;
       return;
     }
 
-    grid.innerHTML = files.map(fileCardHtml).join("");
+    const groups = groupFilesByDate(files, groupingTimestamp);
+
+    grid.innerHTML = groups
+      .map(
+        (group) => `
+          <div class="grid-group">
+            <div class="grid-group-header">${escapeHtml(group.label)}</div>
+            <div class="grid">${group.files.map(fileCardHtml).join("")}</div>
+          </div>
+        `
+      )
+      .join("");
 
     grid.querySelectorAll("[data-delete]").forEach((btn) => {
       btn.addEventListener("click", () => confirmDelete(Number(btn.dataset.delete)));
@@ -171,21 +281,53 @@ export function mountDashboard(root, session, onLogout) {
     grid.querySelectorAll("[data-open-lightbox]").forEach((el) => {
       el.addEventListener("click", () => openLightbox(Number(el.dataset.openLightbox)));
     });
+    grid.querySelectorAll("[data-favorite]").forEach((btn) => {
+      btn.addEventListener("click", () => toggleFavoriteFromGrid(Number(btn.dataset.favorite)));
+    });
+    grid.querySelectorAll("[data-restore]").forEach((btn) => {
+      btn.addEventListener("click", () => restoreFromTrash(Number(btn.dataset.restore)));
+    });
+    grid.querySelectorAll("[data-purge]").forEach((btn) => {
+      btn.addEventListener("click", () => confirmPurge(Number(btn.dataset.purge)));
+    });
+  }
+
+  function fileActionsHtml(file) {
+    if (state.scope === "shared") {
+      return `<a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>`;
+    }
+
+    if (state.scope === "trash") {
+      return `
+        <a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
+        <button class="btn" data-restore="${file.id}" title="Restore">${iconRestore}</button>
+        <button class="btn btn-danger" data-purge="${file.id}" title="Delete Forever">${iconTrash}</button>
+      `;
+    }
+
+    return `
+      <a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
+      <button class="btn favorite-btn${file.isFavorite ? " active" : ""}" data-favorite="${file.id}" title="${
+        file.isFavorite ? "Remove from Favorites" : "Add to Favorites"
+      }">${file.isFavorite ? iconHeartFilled : iconHeart}</button>
+      <button class="btn" data-share="${file.id}" title="Share">${iconShare}</button>
+      <button class="btn btn-danger" data-delete="${file.id}" title="Delete">${iconTrash}</button>
+    `;
+  }
+
+  function trashBadgeHtml(file) {
+    if (state.scope !== "trash" || typeof file.purgeAt !== "number") return "";
+    const secondsLeft = file.purgeAt - Date.now() / 1000;
+    const daysLeft = Math.max(0, Math.ceil(secondsLeft / 86400));
+    const warning = daysLeft <= 3;
+    const label = daysLeft <= 0 ? "Purging soon" : `${daysLeft}d left`;
+    return `<div class="trash-badge${warning ? " trash-badge-warning" : ""}">${label}</div>`;
   }
 
   function fileCardHtml(file) {
     const thumb = file.hasThumbnail
       ? `<img src="${thumbnailUrl(file.id)}" alt="" loading="lazy" />`
       : iconForExtension(file.extension);
-
-    const actions =
-      state.scope === "shared"
-        ? `<a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>`
-        : `
-          <a class="btn" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
-          <button class="btn" data-share="${file.id}" title="Share">${iconShare}</button>
-          <button class="btn btn-danger" data-delete="${file.id}" title="Delete">${iconTrash}</button>
-        `;
 
     const sub =
       state.scope === "shared" && file.sharedBy
@@ -198,7 +340,8 @@ export function mountDashboard(root, session, onLogout) {
 
     return `
       <div class="file-card">
-        <div class="file-actions">${actions}</div>
+        <div class="file-actions">${fileActionsHtml(file)}</div>
+        ${trashBadgeHtml(file)}
         <div class="file-thumb"${thumbAttr}>${thumb}</div>
         <div class="file-meta">
           <div class="file-name" title="${escapeHtml(file.originalName)}">${escapeHtml(file.originalName)}</div>
@@ -206,6 +349,67 @@ export function mountDashboard(root, session, onLogout) {
         </div>
       </div>
     `;
+  }
+
+  async function toggleFavoriteFromGrid(id) {
+    const btn = root.querySelector(`[data-favorite="${id}"]`);
+    const file = state.currentFiles.find((f) => f.id === id);
+    if (!file || !btn) return;
+
+    const next = !file.isFavorite;
+    file.isFavorite = next;
+    setFavoriteButtonState(btn, next);
+
+    try {
+      await api.toggleFavorite(id, next, state.csrfToken);
+      // Leaving the Favorites view itself is the one case where the card
+      // needs to actually disappear once unfavorited - everywhere else the
+      // optimistic icon flip is the whole story.
+      if (state.scope === "favorites" && !next) {
+        loadFiles();
+      }
+    } catch (err) {
+      file.isFavorite = !next;
+      setFavoriteButtonState(btn, !next);
+      showToast(err.message, true);
+    }
+  }
+
+  function setFavoriteButtonState(btn, isFavorite) {
+    btn.innerHTML = isFavorite ? iconHeartFilled : iconHeart;
+    btn.classList.toggle("active", isFavorite);
+    btn.title = isFavorite ? "Remove from Favorites" : "Add to Favorites";
+  }
+
+  async function restoreFromTrash(id) {
+    try {
+      await api.restoreFile(id, state.csrfToken);
+      loadFiles();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+
+  function confirmPurge(id) {
+    openModal(`
+      <h2>Delete forever?</h2>
+      <p>This permanently removes the file and its data. This can't be undone.</p>
+      <div class="modal-actions">
+        <button class="btn" id="cancel-purge">Cancel</button>
+        <button class="btn btn-danger" id="confirm-purge">Delete Forever</button>
+      </div>
+    `);
+    root.querySelector("#cancel-purge").addEventListener("click", closeModal);
+    root.querySelector("#confirm-purge").addEventListener("click", async () => {
+      try {
+        await api.purgeFile(id, state.csrfToken);
+        closeModal();
+        loadFiles();
+      } catch (err) {
+        closeModal();
+        showToast(err.message, true);
+      }
+    });
   }
 
   // ---------- Gallery lightbox ----------
@@ -219,7 +423,10 @@ export function mountDashboard(root, session, onLogout) {
 
   function renderLightbox(images, index) {
     const file = images[index];
-    const canManage = state.scope !== "shared";
+    // Trash gets the same read-only treatment as shared-with-me here -
+    // restore/delete-forever stay grid-card-only actions, matching how
+    // this scope's other actions never grew a lightbox-footer equivalent.
+    const canManage = state.scope !== "shared" && state.scope !== "trash";
 
     root.querySelector("#lightbox-root").innerHTML = `
       <div class="lightbox-backdrop" id="lightbox-backdrop">
@@ -233,6 +440,13 @@ export function mountDashboard(root, session, onLogout) {
           <div class="lightbox-name">${escapeHtml(file.originalName)}</div>
           <div class="lightbox-actions">
             <a class="btn btn-icon" href="${downloadUrl(file.id)}" title="Download">${iconDownload}</a>
+            ${
+              canManage
+                ? `<button class="btn btn-icon favorite-btn${file.isFavorite ? " active" : ""}" id="lightbox-favorite" title="${
+                    file.isFavorite ? "Remove from Favorites" : "Add to Favorites"
+                  }">${file.isFavorite ? iconHeartFilled : iconHeart}</button>`
+                : ""
+            }
             ${canManage ? `<button class="btn btn-icon" id="lightbox-share" title="Share">${iconShare}</button>` : ""}
             ${canManage ? `<button class="btn btn-icon btn-danger" id="lightbox-delete" title="Delete">${iconTrash}</button>` : ""}
           </div>
@@ -246,6 +460,23 @@ export function mountDashboard(root, session, onLogout) {
     });
     root.querySelector("#lightbox-prev")?.addEventListener("click", () => renderLightbox(images, index - 1));
     root.querySelector("#lightbox-next")?.addEventListener("click", () => renderLightbox(images, index + 1));
+    root.querySelector("#lightbox-favorite")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const next = !file.isFavorite;
+      file.isFavorite = next;
+      setFavoriteButtonState(btn, next);
+      // Keep the grid card behind the lightbox in sync without a full reload.
+      const gridBtn = root.querySelector(`[data-favorite="${file.id}"]`);
+      if (gridBtn) setFavoriteButtonState(gridBtn, next);
+      try {
+        await api.toggleFavorite(file.id, next, state.csrfToken);
+      } catch (err) {
+        file.isFavorite = !next;
+        setFavoriteButtonState(btn, !next);
+        if (gridBtn) setFavoriteButtonState(gridBtn, !next);
+        showToast(err.message, true);
+      }
+    });
     root.querySelector("#lightbox-share")?.addEventListener("click", () => {
       closeLightbox();
       openShareModal(file.id);
@@ -280,7 +511,7 @@ export function mountDashboard(root, session, onLogout) {
   async function confirmDelete(id) {
     openModal(`
       <h2>Delete file?</h2>
-      <p>This can't be undone.</p>
+      <p>It moves to Recently Deleted, where it can be restored until it's automatically purged.</p>
       <div class="modal-actions">
         <button class="btn" id="cancel-delete">Cancel</button>
         <button class="btn btn-danger" id="confirm-delete">Delete</button>
@@ -402,9 +633,9 @@ export function mountDashboard(root, session, onLogout) {
     for (const file of Array.from(fileList)) {
       await handleSingleUpload(file);
     }
-    // Uploads always land in "my files" - switch there so the result is
-    // actually visible if the user was looking at "shared with me".
-    if (state.scope === "shared") {
+    // Uploads always land in Library - switch there so the result is
+    // actually visible regardless of which scope was being viewed.
+    if (state.scope !== "mine") {
       state.scope = "mine";
       render();
     } else {

@@ -2,10 +2,16 @@ import { api } from "./api.js";
 import { mountLogin } from "./auth.js";
 import { mountSetup } from "./setup.js";
 import { mountDashboard } from "./dashboard.js";
+import { initTheme } from "./theme.js";
 
 const setupView = document.getElementById("view-setup");
 const loginView = document.getElementById("view-login");
 const dashboardView = document.getElementById("view-dashboard");
+
+// Applied before anything else renders, so the stored theme preference is
+// already live on the login/setup screens, not just after the dashboard
+// mounts.
+initTheme();
 
 async function boot() {
   try {

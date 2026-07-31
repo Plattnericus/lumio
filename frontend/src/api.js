@@ -45,19 +45,29 @@ export const api = {
   setupCreate: (username, password, setupToken) =>
     request("/setup", { method: "POST", body: { username, password, setupToken } }),
 
-  listFiles: (type, scope) => {
+  listFiles: (type, scope, albumId) => {
     const params = new URLSearchParams();
     if (type) params.set("type", type);
     if (scope) params.set("scope", scope);
+    if (albumId) params.set("albumId", albumId);
     const query = params.toString();
     return request(`/files${query ? `?${query}` : ""}`);
   },
   deleteFile: (id, csrfToken) => request(`/files/${id}`, { method: "DELETE", csrfToken }),
+  restoreFile: (id, csrfToken) => request(`/files/${id}/restore`, { method: "POST", csrfToken }),
+  purgeFile: (id, csrfToken) => request(`/files/${id}/forever`, { method: "DELETE", csrfToken }),
+  toggleFavorite: (id, favorite, csrfToken) =>
+    request(`/files/${id}/favorite`, { method: "PUT", body: { favorite }, csrfToken }),
   shareFile: (id, username, csrfToken) =>
     request(`/files/${id}/shares`, { method: "POST", body: { username }, csrfToken }),
   listShares: (id) => request(`/files/${id}/shares`),
   unshareFile: (id, userId, csrfToken) =>
     request(`/files/${id}/shares/${userId}`, { method: "DELETE", csrfToken }),
+
+  // Albums (BE4) may not have merged yet in every environment this runs
+  // against - callers are expected to treat a rejected promise here as
+  // "no albums", not a hard error.
+  listAlbums: () => request("/albums"),
 
   createPairingCode: (csrfToken) => request("/pairing/codes", { method: "POST", csrfToken }),
 

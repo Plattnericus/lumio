@@ -32,12 +32,40 @@
   --sidebar-w: 250px;
 }
 
+/* Explicit "dark" always wins, regardless of what the OS is set to - this
+   is what makes the Light/Dark/Auto toggle's "Dark" option actually force
+   dark colors even when the OS itself is in light mode. */
 :root[data-theme="dark"] {
   color-scheme: dark;
+
+  --bg-0: #000000;
+  --bg-1: #1c1c1e;
+  --bg-2: #2c2c2e;
+
+  --glass-bg: rgba(28, 28, 30, 0.72);
+  --glass-bg-strong: rgba(44, 44, 46, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+
+  --text-0: #f5f5f7;
+  --text-1: #c7c7cc;
+  --text-2: #8e8e93;
+
+  --accent: #0a84ff;
+  --accent-strong: #3b9dff;
+  --accent-press: #409cff;
+  --accent-glow: rgba(10, 132, 255, 0.28);
+  --accent-tint: rgba(10, 132, 255, 0.16);
+
+  --danger: #ff453a;
+  --danger-glow: rgba(255, 69, 58, 0.2);
 }
 
+/* "Auto" is expressed as no data-theme attribute at all - this block is
+   what makes that follow the OS. Explicit "light"/"dark" both opt out of
+   it, "dark" via the rule above already covering the same values. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
     color-scheme: dark;
 
     --bg-0: #000000;
@@ -442,6 +470,20 @@ a {
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* Albums gets its own internal scroll cap so a long list grows inside
+   its own box instead of pushing the rest of the sidebar (and the
+   Recently Deleted item below it) further down. */
+.nav-albums-list {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.nav-albums-empty {
+  padding: 6px 10px 2px;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
 .sidebar-footer {
   border-top: 1px solid var(--glass-border);
   padding-top: 10px;
@@ -594,6 +636,22 @@ a {
   gap: 14px;
 }
 
+.grid-group {
+  margin-bottom: 28px;
+}
+
+.grid-group:last-child {
+  margin-bottom: 0;
+}
+
+.grid-group-header {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--text-0);
+  letter-spacing: -0.01em;
+  margin: 0 0 12px 2px;
+}
+
 .empty-state {
   text-align: center;
   color: var(--text-2);
@@ -688,6 +746,29 @@ a {
 .file-actions svg {
   width: 15px;
   height: 15px;
+}
+
+.file-actions .favorite-btn.active {
+  color: var(--danger);
+}
+
+.trash-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.trash-badge-warning {
+  color: #fff;
+  background: var(--danger);
 }
 
 /* ---------- Upload progress ---------- */
@@ -1065,6 +1146,10 @@ a {
   color: var(--danger);
 }
 
+.lightbox-actions .favorite-btn.active {
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
   .lightbox-nav {
     width: 38px;
@@ -1109,6 +1194,16 @@ a {
   .nav-item {
     width: auto;
     white-space: nowrap;
+  }
+  /* On the collapsed horizontal layout, let Albums merge into the same
+     scrolling row as every other nav item instead of keeping its own
+     vertical scrollbox - the outer .sidebar already scrolls horizontally,
+     so that's where overflow should be handled here, not a second nested
+     scroll area. */
+  .nav-albums-list {
+    display: flex;
+    max-height: none;
+    overflow: visible;
   }
   .sidebar-footer {
     display: flex;

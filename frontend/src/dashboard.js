@@ -454,7 +454,7 @@ export function mountDashboard(root, session, onLogout) {
   function renderPairingCode(code, expiresAt) {
     openModal(`
       <h2>Pair your Garmin watch</h2>
-      <p>Enter this code in the Lumio watch app. It expires in a few minutes.</p>
+      <p>Enter this code in the Lumio watch app.</p>
       <div class="pairing-code">${code}</div>
       <p id="pairing-countdown"></p>
       <div class="modal-actions"><button class="btn" id="close-pairing">Close</button></div>
@@ -530,7 +530,6 @@ export function mountDashboard(root, session, onLogout) {
   function openAccountModal() {
     openModal(`
       <h2>Change password</h2>
-      <p>Choose a new password for your own account.</p>
       <div class="field">
         <label for="acct-current">Current password</label>
         <div class="password-field">
@@ -643,7 +642,7 @@ export function mountDashboard(root, session, onLogout) {
       <div class="field">
         <label for="new-user-username">Username</label>
         <input type="text" id="new-user-username" autocomplete="off" pattern="[a-zA-Z0-9._-]{3,32}" maxlength="32" />
-        <div class="field-hint">3-32 characters: letters, numbers, dots, hyphens, or underscores. Tell them this exact spelling - they'll need it to sign in.</div>
+        <div class="field-hint">3-32 characters: letters, numbers, dots, hyphens, or underscores.</div>
       </div>
       <div class="inline-form">
         <div class="password-field" style="flex:1;">
@@ -683,7 +682,7 @@ export function mountDashboard(root, session, onLogout) {
       passwordEl.value = "";
       confirmEl.value = "";
       await loadUsers();
-      showToast(`Account "${username}" created - share the username and password with them so they can sign in.`);
+      showToast(`Account "${username}" created.`);
     } catch (err) {
       errorEl.textContent = err.message;
     }

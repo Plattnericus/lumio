@@ -25,6 +25,18 @@ module LumioApi {
         Communications.makeWebRequest(serverUrl() + "/api/pairing/exchange", { "code" => code }, options, callback);
     }
 
+    // Used only during first-run setup, before a server address is saved -
+    // a quick, unauthenticated hit of the health endpoint so a typo'd
+    // address fails fast with a clear message instead of silently being
+    // saved and only surfacing as a mysterious pairing failure later.
+    function checkServerReachable(url as String, callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void) as Void {
+        var options = {
+            :method => Communications.HTTP_REQUEST_METHOD_GET,
+            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON,
+        };
+        Communications.makeWebRequest(url + "/api/health", null, options, callback);
+    }
+
     function fetchImageList(callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void) as Void {
         var options = {
             :method => Communications.HTTP_REQUEST_METHOD_GET,

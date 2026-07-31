@@ -7,6 +7,7 @@ class FullscreenImageView extends WatchUi.View {
     private var _imageId as Number;
     private var _bitmap as Graphics.BitmapReference?;
     private var _loading as Boolean;
+    private var _errorCode as Number?;
 
     // Zoom/pan state. Connect IQ has no pinch/multi-touch gesture API -
     // InputDelegate is single-touch-point only, even on a touch-first
@@ -37,8 +38,16 @@ class FullscreenImageView extends WatchUi.View {
 
     function onImageLoaded(responseCode as Number, data as Graphics.BitmapReference?) as Void {
         _loading = false;
-        if (responseCode == 200) {
+        if (responseCode == 200 && data != null) {
             _bitmap = data;
+        } else {
+            // Logged for on-device/simulator console visibility, and shown
+            // on screen too - "Couldn't load photo" alone gives no way to
+            // tell a network failure (e.g. BLE_CONNECTION_UNAVAILABLE,
+            // -104) apart from a real server error or a genuinely corrupt
+            // image (UNABLE_TO_PROCESS_IMAGE, -1006).
+            _errorCode = responseCode;
+            System.println("Lumio: image " + _imageId.toString() + " failed to load, code=" + responseCode.toString());
         }
         WatchUi.requestUpdate();
     }
@@ -60,13 +69,31 @@ class FullscreenImageView extends WatchUi.View {
                     bitmap
                 );
             }
-        } else {
-            var message = _loading ? "Loading..." : "Couldn't load photo";
+        } else if (_loading) {
             dc.drawText(
                 dc.getWidth() / 2,
                 dc.getHeight() / 2,
                 Graphics.FONT_SMALL,
-                message,
+                "Loading...",
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+            );
+        } else {
+            // Two separate calls rather than a single "\n"-joined string -
+            // not confident every FONT_SMALL/device combination in this
+            // SDK reliably line-breaks on an embedded newline, and this
+            // sidesteps the question entirely.
+            dc.drawText(
+                dc.getWidth() / 2,
+                dc.getHeight() / 2 - 14,
+                Graphics.FONT_SMALL,
+                "Couldn't load photo",
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+            );
+            dc.drawText(
+                dc.getWidth() / 2,
+                dc.getHeight() / 2 + 14,
+                Graphics.FONT_XTINY,
+                "(" + (_errorCode as Number).toString() + ")",
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
             );
         }

@@ -4,6 +4,7 @@ import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.PersistedContent;
+import Toybox.System;
 
 // Thin wrapper around the three endpoints this app ever calls. Server URL
 // and pairing code are both user-configured Connect IQ settings (entered
@@ -47,11 +48,16 @@ module LumioApi {
     }
 
     function fetchImage(id as Number, callback as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void) as Void {
+        // Sized to this device's actual screen, not a fixed guess - matters
+        // for both quality (a screen bigger than 260x260 would upscale a
+        // too-small image) and bandwidth (no reason to ask for more pixels
+        // than the screen can show).
+        var settings = System.getDeviceSettings();
         var options = {
             :method => Communications.HTTP_REQUEST_METHOD_GET,
             :headers => { "Authorization" => "Bearer " + (Storage.getValue("deviceToken") as String) },
-            :maxWidth => 260,
-            :maxHeight => 260,
+            :maxWidth => settings.screenWidth,
+            :maxHeight => settings.screenHeight,
         };
         Communications.makeImageRequest(serverUrl() + "/api/garmin/images/" + id.toString(), null, options, callback);
     }

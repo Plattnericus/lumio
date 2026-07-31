@@ -63,18 +63,33 @@ module LumioApi {
         Communications.makeWebRequest(serverUrl() + "/api/garmin/albums", null, options, callback);
     }
 
-    function fetchImage(id as Number, callback as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void) as Void {
-        // Sized to this device's actual screen, not a fixed guess - matters
-        // for both quality (a screen bigger than 260x260 would upscale a
-        // too-small image) and bandwidth (no reason to ask for more pixels
-        // than the screen can show).
-        var settings = System.getDeviceSettings();
+    // maxWidth/maxHeight are the caller's to choose - the fullscreen view
+    // asks for the real screen size, the list's row previews ask for
+    // something tiny, both hitting the exact same preview-rendition
+    // endpoint (GCM/the device itself does the actual downscaling, per
+    // Communications.makeImageRequest's own docs - the server always
+    // serves the same mid-size preview rendition regardless of what's
+    // requested here).
+    function fetchImage(
+        id as Number,
+        maxWidth as Number,
+        maxHeight as Number,
+        callback as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void
+    ) as Void {
         var options = {
             :method => Communications.HTTP_REQUEST_METHOD_GET,
             :headers => { "Authorization" => "Bearer " + (Storage.getValue("deviceToken") as String) },
-            :maxWidth => settings.screenWidth,
-            :maxHeight => settings.screenHeight,
+            :maxWidth => maxWidth,
+            :maxHeight => maxHeight,
         };
         Communications.makeImageRequest(serverUrl() + "/api/garmin/images/" + id.toString(), null, options, callback);
+    }
+
+    // A small row-preview icon for the photo list - same endpoint as the
+    // fullscreen fetch, just requested much smaller.
+    const THUMBNAIL_SIZE = 64;
+
+    function fetchThumbnail(id as Number, callback as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void) as Void {
+        fetchImage(id, THUMBNAIL_SIZE, THUMBNAIL_SIZE, callback);
     }
 }

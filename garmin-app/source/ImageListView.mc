@@ -1,3 +1,4 @@
+import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.PersistedContent;
 import Toybox.WatchUi;
@@ -40,7 +41,15 @@ class ImageListView extends WatchUi.Menu2 {
             var id = entry.get("id") as Number;
             var name = entry.get("name") as String?;
             var label = (name != null && name.length() > 0) ? name : ("Photo " + id.toString());
-            addItem(new WatchUi.MenuItem(label, null, id, {}));
+            var item = new WatchUi.MenuItem(label, null, id, {});
+            addItem(item);
+
+            // Small row preview, loaded lazily per row rather than
+            // blocking the whole list on every image up front - each
+            // request is tiny (LumioApi.THUMBNAIL_SIZE) and fills in
+            // whichever row it belongs to whenever it lands.
+            var loader = new ThumbnailLoader(item);
+            LumioApi.fetchThumbnail(id, loader.method(:onLoaded) as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void);
         }
     }
 }

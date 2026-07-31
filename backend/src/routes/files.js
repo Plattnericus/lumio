@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   deleteFile,
   filePath,
+  listFavorites,
   listFiles,
   listTrash,
   previewPath,
@@ -11,6 +12,7 @@ import {
   restoreFile,
   storeUpload,
   thumbnailPath,
+  toggleFavorite,
 } from "../services/uploadService.js";
 import {
   getAccessibleFile,
@@ -20,9 +22,11 @@ import {
   ShareError,
   unshareFile,
 } from "../services/shareService.js";
+import { AlbumError, listFilesInAlbum } from "../services/albumService.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { csrfProtection } from "../middleware/csrf.js";
 import { env } from "../config/env.js";
+import { toPublicFile } from "../lib/publicFile.js";
 
 export const filesRouter = Router();
 
@@ -31,23 +35,6 @@ const upload = multer({
   limits: { fileSize: env.maxUploadMb * 1024 * 1024 },
 });
 
-function toPublicFile(file) {
-  return {
-    id: file.id,
-    originalName: file.original_name,
-    mimeType: file.mime_type,
-    extension: file.extension,
-    sizeBytes: file.size_bytes,
-    hasThumbnail: Boolean(file.has_thumbnail),
-    uploadedAt: file.uploaded_at,
-    // Only present for rows that came from the shared-with-me join -
-    // the scope=mine path (the common case) does no join at all.
-    ...(file.owner_username ? { sharedBy: file.owner_username, sharedAt: file.shared_at } : {}),
-    // Only present for trashed rows - a live file's deleted_at is NULL.
-    ...(file.deleted_at ? { deletedAt: file.deleted_at } : {}),
-  };
-}
-
 function handleShareError(err, res, next) {
   if (err instanceof ShareError) {
     return res.status(err.status).json({ error: err.message });
@@ -55,13 +42,36 @@ function handleShareError(err, res, next) {
   next(err);
 }
 
+function handleAlbumError(err, res, next) {
+  if (err instanceof AlbumError) {
+    return res.status(err.status).json({ error: err.message });
+  }
+  next(err);
+}
+
 filesRouter.use(requireAuth);
 
-filesRouter.get("/", (req, res) => {
+filesRouter.get("/", (req, res, next) => {
   const { scope, type } = req.query;
 
   if (scope === "shared") {
     return res.json(listFilesSharedWithMe(req.session.userId, type).map(toPublicFile));
+  }
+
+  if (scope === "favorites") {
+    return res.json(listFavorites(req.session.userId, type).map(toPublicFile));
+  }
+
+  if (scope === "album") {
+    const albumId = Number(req.query.albumId);
+    if (!Number.isInteger(albumId)) {
+      return res.status(400).json({ error: "albumId is required" });
+    }
+    try {
+      return res.json(listFilesInAlbum(albumId, req.session.userId, type).map(toPublicFile));
+    } catch (err) {
+      return handleAlbumError(err, res, next);
+    }
   }
 
   if (scope === "trash") {
@@ -140,6 +150,21 @@ filesRouter.post("/:id/restore", csrfProtection, (req, res) => {
 filesRouter.delete("/:id/forever", csrfProtection, async (req, res) => {
   const purged = await purgeFile(Number(req.params.id), req.session.userId);
   if (!purged) return res.status(404).json({ error: "Not found" });
+  res.status(204).end();
+});
+
+// Owner-only, and deliberately works even while the file is trashed - see
+// toggleFavorite's comment in uploadService.js. A trashed favorite is
+// still hidden from scope=favorites (and everywhere else) until restored,
+// but the flag itself isn't cleared by trashing.
+filesRouter.put("/:id/favorite", csrfProtection, (req, res) => {
+  const { favorite } = req.body || {};
+  if (typeof favorite !== "boolean") {
+    return res.status(400).json({ error: "favorite must be a boolean" });
+  }
+
+  const updated = toggleFavorite(Number(req.params.id), req.session.userId, favorite);
+  if (!updated) return res.status(404).json({ error: "Not found" });
   res.status(204).end();
 });
 

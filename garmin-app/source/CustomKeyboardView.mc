@@ -1,5 +1,7 @@
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
+import Toybox.System;
 import Toybox.WatchUi;
 
 // TextPicker (the only text-entry widget Connect IQ actually ships) is a
@@ -19,6 +21,12 @@ class CustomKeyboardView extends WatchUi.View {
 
     private const BACKSPACE = "⌫";
     private const CONFIRM = "✓";
+    // vivoactive6 is 390x390 round (confirmed against Garmin's compatible-
+    // devices reference and the SDK's own per-device compiler.json/
+    // simulator.json) - past this many characters, FONT_SMALL at the
+    // buffer's on-screen width would overrun the safe circular area, so
+    // only the tail (the part nearest the typing cursor) is shown.
+    private const MAX_VISIBLE_BUFFER_CHARS = 18;
 
     // switchLabel is the text for an optional extra key (e.g. "123" on a
     // letters page, "ABC" on a numbers/symbols page) that lets the caller
@@ -111,12 +119,23 @@ class CustomKeyboardView extends WatchUi.View {
 
         dc.drawText(width / 2, height * 0.10, Graphics.FONT_XTINY, _prompt, Graphics.TEXT_JUSTIFY_CENTER);
 
-        var shownBuffer = _buffer.length() > 0 ? _buffer : "_";
+        var shownBuffer = _buffer;
+        if (shownBuffer.length() == 0) {
+            shownBuffer = "_";
+        } else if (shownBuffer.length() > MAX_VISIBLE_BUFFER_CHARS) {
+            shownBuffer = "…" + shownBuffer.substring(shownBuffer.length() - MAX_VISIBLE_BUFFER_CHARS, shownBuffer.length());
+        }
         dc.drawText(width / 2, height * 0.20, Graphics.FONT_SMALL, shownBuffer, Graphics.TEXT_JUSTIFY_CENTER);
 
         drawKeyboard(dc, width, height);
     }
 
+    // A plain full-width rectangular grid puts the outer keys of the top
+    // and bottom rows under the bezel (or entirely off the tappable area)
+    // on a round face - confirmed for vivoactive6's 390x390 round display.
+    // Each row is instead sized to the circle's actual chord width at that
+    // row's vertical position, so every drawn key stays fully on-screen
+    // and tappable; only non-round displays get the plain full-width row.
     private function drawKeyboard(dc as Graphics.Dc, width as Number, height as Number) as Void {
         var slots = allSlots();
         var rows = (slots.size() + _cols - 1) / _cols;
@@ -125,30 +144,59 @@ class CustomKeyboardView extends WatchUi.View {
         // prompt/buffer text above it.
         var top = height * 0.28;
         var usableHeight = height * 0.70;
-        var keyW = width / _cols;
         var keyH = usableHeight / rows;
+
+        var isRound = System.getDeviceSettings().screenShape == System.SCREEN_SHAPE_ROUND;
+        var centerX = width / 2.0;
+        var centerY = height / 2.0;
+        var radius = (width < height ? width : height) / 2.0;
+        // A row whose center lands very near the top/bottom of the circle
+        // still gets this minimum share of the full width - otherwise the
+        // chord math alone would squeeze it down to an unusably thin sliver.
+        var minHalfWidth = radius * 0.35;
 
         _keyRects = [] as Array<[Number, Number, Number, Number]>;
 
-        for (var i = 0; i < slots.size(); i++) {
-            var col = i % _cols;
-            var row = i / _cols;
-            var x = col * keyW;
-            var y = top + row * keyH;
+        for (var row = 0; row < rows; row++) {
+            var rowTop = top + row * keyH;
+            var rowCenterY = rowTop + keyH / 2;
 
-            _keyRects.add([x.toNumber(), y.toNumber(), keyW.toNumber(), keyH.toNumber()]);
+            var rowWidth = width.toDouble();
+            if (isRound) {
+                var dy = (rowCenterY - centerY).abs();
+                var halfWidth = dy < radius ? Math.sqrt(radius * radius - dy * dy) : minHalfWidth;
+                if (halfWidth < minHalfWidth) {
+                    halfWidth = minHalfWidth;
+                }
+                rowWidth = halfWidth * 2;
+            }
 
-            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-            dc.drawRectangle(x.toNumber() + 1, y.toNumber() + 1, keyW.toNumber() - 2, keyH.toNumber() - 2);
+            var rowLeft = centerX - rowWidth / 2;
+            var keyW = rowWidth / _cols;
 
-            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(
-                (x + keyW / 2).toNumber(),
-                (y + keyH / 2).toNumber(),
-                Graphics.FONT_TINY,
-                slots[i],
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
-            );
+            for (var col = 0; col < _cols; col++) {
+                var i = row * _cols + col;
+                if (i >= slots.size()) {
+                    break;
+                }
+
+                var x = rowLeft + col * keyW;
+                var y = rowTop;
+
+                _keyRects.add([x.toNumber(), y.toNumber(), keyW.toNumber(), keyH.toNumber()]);
+
+                dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+                dc.drawRectangle(x.toNumber() + 1, y.toNumber() + 1, keyW.toNumber() - 2, keyH.toNumber() - 2);
+
+                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+                dc.drawText(
+                    (x + keyW / 2).toNumber(),
+                    (y + keyH / 2).toNumber(),
+                    Graphics.FONT_TINY,
+                    slots[i],
+                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+                );
+            }
         }
     }
 }

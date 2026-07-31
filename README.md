@@ -10,15 +10,27 @@ this app, served straight off a VPS's public IP.
 - Own login, own sessions — no external auth dependency
 - Multi-user: a first-run setup wizard creates the admin account, who can
   then provision further accounts — still no open self-registration
+- A Photos-style library: date-grouped grid, favorites, and non-exclusive
+  albums (a file can live in as many albums as you want and still shows up
+  in the main library)
+- Deleted files land in a 30-day trash, restorable until then, purged for
+  good afterward — no accidental permanent deletes
 - Per-file sharing by username — view/download only, never delete or
   re-share; everything stays private unless you explicitly share it
 - Drag-and-drop upload with real file-type validation (magic bytes, not
   extensions)
-- Grid view with image thumbnails and type icons for documents
-- Download and delete, filterable by file type
-- Garmin watch app: pair once, then browse, view, and zoom/pan your
-  photos on-device
-- TOTP two-factor authentication
+- A lightbox with wheel-zoom/click-drag on desktop and pinch/double-tap on
+  mobile, plus an inline PDF viewer — no forced download just to look at
+  something
+- Light/dark/auto theme
+- Passwordless sign-in via passkeys (WebAuthn), on top of password + TOTP —
+  a registered passkey skips the TOTP prompt entirely, since it already
+  proves possession and (usually) biometrics
+- "Stay logged in" sessions that quietly extend themselves while you're
+  actually using the app, instead of a fixed 7-day cliff
+- Garmin watch app: pair once with a code typed directly on the watch (no
+  phone-side settings screen), then filter by All Photos / Favorites / a
+  specific album and browse, view, and zoom/pan your photos on-device
 - Real TLS via a Let's Encrypt certificate issued directly for the server's
   IP address (no domain required)
 - Optional auto-update on new releases, off by default, admin-toggled
@@ -86,16 +98,19 @@ npm run dev   # served separately in dev; nginx serves frontend/dist in prod
 ### garmin-app/
 
 Open `garmin-app/` in the Connect IQ SDK / VS Code plugin and run it against
-the Vivoactive 6 simulator. Before it can reach your server, set two app
-settings (Connect IQ simulator: App Settings, or on a real watch: the
-widget's settings in Garmin Connect Mobile) - neither is hardcoded:
+the Vivoactive 6 simulator. Everything is entered directly on the watch with
+a hand-built on-screen keyboard - no phone-side settings screen, nothing
+hardcoded:
 
-- **Lumio server URL** - e.g. `https://your-server:8444`
-- **Pairing code** - generated from the dashboard's "Pair Garmin watch"
-  button, then press Select on the watch to exchange it for a token
-
-The app stores the resulting device token locally and won't ask for the
-code again unless that storage is cleared.
+- First run asks for your **Lumio server's address** (e.g.
+  `https://your-server:8444`), checks it's actually reachable before saving,
+  and gives you a clear error and another chance if it isn't.
+- Then it asks for a **pairing code** - generate one from the dashboard's
+  "Pair Garmin watch" button, type it in on the watch, press the checkmark.
+  The resulting device token is stored on-device and it won't ask again
+  unless that storage is cleared.
+- After pairing, a quick filter menu (All Photos / Favorites / an album)
+  decides what the photo list below it actually shows.
 
 ## Environment variables
 
@@ -111,8 +126,13 @@ value-free template — never commit the real file).
 | `UPLOAD_DIR` | Path where uploaded files are stored |
 | `SETUP_TOKEN_PATH` | Where the one-time first-run setup token is written. Defaults to `setup-token.txt` next to `DB_PATH` |
 | `MAX_UPLOAD_MB` | Upload size limit in megabytes |
-| `LOGIN_RATE_LIMIT_MAX` | Failed login attempts allowed before lockout |
+| `LOGIN_RATE_LIMIT_MAX` / `LOGIN_LOCKOUT_MINUTES` | Failed login attempts allowed before a temporary lockout, and how long it lasts |
 | `PAIRING_CODE_TTL_MINUTES` | How long a Garmin pairing code stays valid |
+| `TRASH_RETENTION_DAYS` | How long a deleted file sits in trash before it's purged for good |
+| `SESSION_MAX_AGE_DAYS` | How long a "stay logged in" session lasts before it must be re-established |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_NAME` / `WEBAUTHN_ORIGIN` | Passkey (WebAuthn) settings - RP ID is the bare domain (no scheme/port) the app is served from, origin is the full URL the browser sees. Both `RP_ID` and `ORIGIN` have safe localhost defaults outside production but **must** be set explicitly once `NODE_ENV=production` |
+| `DUO_INTEGRATION_KEY` / `DUO_SECRET_KEY` / `DUO_API_HOSTNAME` | Reserved for a future Duo Security integration - not read by any code path yet, since that needs a real Duo account to build and test against |
+| `TRUSTED_PROXY_SUBNETS` | Comma-separated subnets Express trusts as reverse-proxy hops (`loopback` by default). Add another only if something sits in front of nginx - see Domain access below |
 
 ## CI/CD & release process
 
@@ -267,10 +287,29 @@ object storage, etc.) and this gets wired in as a follow-up.
   can be viewed and downloaded, never deleted or re-shared, and only the
   owner ever sees who it's shared with. Revoking a share removes access
   immediately.
-- Sessions: `httpOnly`, `secure`, `sameSite=strict` cookies; CSRF protection
+- Sessions: `httpOnly`, `secure`, `sameSite=strict` cookies, rolling expiry
+  (each request extends it, up to `SESSION_MAX_AGE_DAYS`) - only the
+  server-side session store's own already-valid-session check can extend
+  it, so an expired session can't be silently resurrected; CSRF protection
   on all state-changing routes.
 - Rate limiting + lockout on `/api/login`, with a generic error message that
   never reveals whether a username exists.
+- Passkeys (WebAuthn) are a phishing-resistant alternative to password+TOTP,
+  not a weaker side door: registration requires an existing authenticated
+  session, login is usernameless (the server identifies the account from
+  the credential ID the browser returns, never a client-supplied username),
+  and a successful passkey login is treated as fully authenticated on its
+  own - it already proves possession and (usually) biometrics, the same
+  assurance level TOTP exists to add on top of a password. Duo Security
+  integration is stubbed (env vars only, no code path yet) pending a real
+  Duo account to build and test against - not built blind.
+- Deleting a file moves it to a 30-day trash instead of touching disk -
+  restorable until a background sweep (or an operator's own cron, via
+  `backend/src/scripts/purge-trash.js`) purges it for good. Removing a
+  user (from Settings) still deletes every one of their files immediately
+  regardless of trash state - trash is a safety net against your own
+  mistakes, not a way to keep a removed user's data around longer than
+  intended.
 - Uploads are validated by magic bytes against an allow-list (jpg, png,
   webp, pdf, docx, pptx), size-limited, stored under randomized filenames,
   and only ever served through an authenticated endpoint — never mounted

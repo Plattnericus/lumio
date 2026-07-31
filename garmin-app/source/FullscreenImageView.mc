@@ -30,10 +30,17 @@ class FullscreenImageView extends WatchUi.View {
     }
 
     function onShow() as Void {
-        // Fetched from a fixed watch-sized preview rendition on the
-        // server, not the original - no reason to move a full-resolution
-        // photo over Bluetooth to a screen this small.
-        LumioApi.fetchImage(_imageId, method(:onImageLoaded) as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void);
+        // Sized to this device's actual screen, not a fixed guess - a
+        // screen bigger than some hardcoded size would upscale a
+        // too-small image, and there's no reason to ask for more pixels
+        // than the screen can show either.
+        var settings = System.getDeviceSettings();
+        LumioApi.fetchImage(
+            _imageId,
+            settings.screenWidth,
+            settings.screenHeight,
+            method(:onImageLoaded) as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void
+        );
     }
 
     function onImageLoaded(responseCode as Number, data as Graphics.BitmapReference?) as Void {

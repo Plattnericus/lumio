@@ -9,15 +9,20 @@ class ImageListView extends WatchUi.Menu2 {
     // limits how many Communications requests can be active in parallel
     // (confirmed against the official docs' own cancelAllRequests()
     // description), and firing one per row simultaneously blew right
-    // past that. Each entry is [id, item]; _currentThumbnailItem tracks
-    // whichever one is actually in flight.
+    // past that. Each queue entry is [id, item]; _current tracks
+    // whichever [id, item] is actually in flight right now.
     private var _thumbnailQueue as Array<[Number, WatchUi.MenuItem]>;
-    private var _currentThumbnailItem as WatchUi.MenuItem?;
+    private var _current as [Number, WatchUi.MenuItem]?;
     private var _filter as Dictionary?;
     // Menu2 only exposes deleteItem(index), not a bulk clear - this
-    // tracks how many items are currently added so reload() can remove
-    // exactly that many via repeated deleteItem(0) calls.
+    // tracks how many items are currently added so onShow() can remove
+    // exactly that many via repeated deleteItem(0) calls before reloading.
     private var _itemCount as Number;
+    // Keyed by photo id, kept across reloads (not cleared in onShow/
+    // onHide) - a photo already seen once shows its thumbnail instantly
+    // on every later visit instead of re-downloading it, since the list
+    // itself now reloads on every return to this view (see onShow).
+    private var _thumbnailCache as Dictionary<Number, Graphics.BitmapReference>;
 
     // null = all photos; otherwise a scope filter Dictionary built by
     // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
@@ -25,9 +30,10 @@ class ImageListView extends WatchUi.Menu2 {
     function initialize(filter as Dictionary?) {
         Menu2.initialize({ :title => "Lumio Photos" });
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
-        _currentThumbnailItem = null;
+        _current = null;
         _filter = filter;
         _itemCount = 0;
+        _thumbnailCache = {} as Dictionary<Number, Graphics.BitmapReference>;
         addLoadingItem();
     }
 
@@ -38,21 +44,24 @@ class ImageListView extends WatchUi.Menu2 {
 
     // Reloads from scratch every time this view becomes visible - both
     // the first time (right after construction) and every time it's
-    // revealed again (backing out of a fullscreen photo). Refreshing on
-    // every return matters: without it, a photo that gets favorited,
+    // revealed again (backing out of a fullscreen photo). Refreshing the
+    // list itself matters: without it, a photo that gets favorited,
     // trashed, or deleted via the web dashboard while you're browsing on
     // the watch would keep showing as a valid row indefinitely - tapping
     // it would 404 every time, with no way to recover short of
     // restarting the app. This also runs after the outgoing view's
     // onHide() has already fired (see that comment below), so there's
-    // nothing left over to cancel this fetch.
+    // nothing left over to cancel this fetch. The thumbnail cache is
+    // deliberately NOT cleared here - only the metadata (name, whether a
+    // photo still exists at all) needs to be fresh every time, not the
+    // actual pixels, which don't change for a given photo id.
     function onShow() as Void {
         while (_itemCount > 0) {
             deleteItem(0);
             _itemCount -= 1;
         }
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
-        _currentThumbnailItem = null;
+        _current = null;
         addLoadingItem();
         LumioApi.fetchImageList(
             _filter,
@@ -67,7 +76,7 @@ class ImageListView extends WatchUi.Menu2 {
     function onHide() as Void {
         Communications.cancelAllRequests();
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
-        _currentThumbnailItem = null;
+        _current = null;
     }
 
     function onImagesLoaded(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void {
@@ -101,7 +110,12 @@ class ImageListView extends WatchUi.Menu2 {
             var item = new WatchUi.MenuItem(label, null, id, {});
             addItem(item);
             _itemCount += 1;
-            _thumbnailQueue.add([id, item] as [Number, WatchUi.MenuItem]);
+
+            if (_thumbnailCache.hasKey(id)) {
+                item.setIcon(_thumbnailCache[id] as Graphics.BitmapReference);
+            } else {
+                _thumbnailQueue.add([id, item] as [Number, WatchUi.MenuItem]);
+            }
         }
 
         loadNextThumbnail();
@@ -114,7 +128,7 @@ class ImageListView extends WatchUi.Menu2 {
 
         var next = _thumbnailQueue[0];
         _thumbnailQueue = _thumbnailQueue.slice(1, _thumbnailQueue.size());
-        _currentThumbnailItem = next[1];
+        _current = next;
 
         LumioApi.fetchThumbnail(
             next[0],
@@ -123,10 +137,12 @@ class ImageListView extends WatchUi.Menu2 {
     }
 
     function onThumbnailLoaded(responseCode as Number, data as Graphics.BitmapReference?) as Void {
-        if (responseCode == 200 && data != null && _currentThumbnailItem != null) {
-            (_currentThumbnailItem as WatchUi.MenuItem).setIcon(data as Graphics.BitmapReference);
+        if (responseCode == 200 && data != null && _current != null) {
+            var current = _current as [Number, WatchUi.MenuItem];
+            current[1].setIcon(data as Graphics.BitmapReference);
+            _thumbnailCache[current[0]] = data as Graphics.BitmapReference;
         }
-        _currentThumbnailItem = null;
+        _current = null;
         // Keep going regardless of whether that one succeeded - one
         // missing thumbnail shouldn't stall every row after it.
         loadNextThumbnail();

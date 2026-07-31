@@ -51,7 +51,7 @@ class PairingDelegate extends WatchUi.BehaviorDelegate {
             Storage.setValue("deviceToken", data.get("token"));
             WatchUi.switchToView(new FilterMenuView(), new FilterMenuDelegate(), WatchUi.SLIDE_IMMEDIATE);
         } else {
-            _view.setStatus("That code didn't work.\nCheck it and try again.");
+            _view.setStatus("That code didn't work.\nCheck it and try again.\n" + ConnectionError.describe(responseCode));
         }
     }
 }

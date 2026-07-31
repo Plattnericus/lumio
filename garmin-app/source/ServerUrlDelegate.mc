@@ -90,7 +90,9 @@ class ServerUrlDelegate extends WatchUi.BehaviorDelegate {
             var pairingView = new PairingView();
             WatchUi.switchToView(pairingView, new PairingDelegate(pairingView), WatchUi.SLIDE_IMMEDIATE);
         } else {
-            _view.setStatus("Couldn't reach that\nserver. Check the\naddress and try again.");
+            _view.setStatus(
+                "Couldn't reach that\nserver. Check the\naddress and try again.\n" + ConnectionError.describe(responseCode)
+            );
         }
     }
 }

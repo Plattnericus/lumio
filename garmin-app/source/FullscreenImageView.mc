@@ -110,7 +110,7 @@ class FullscreenImageView extends WatchUi.View {
                 dc.getWidth() / 2,
                 dc.getHeight() / 2 + 14,
                 Graphics.FONT_XTINY,
-                "(" + (_errorCode as Number).toString() + ")",
+                ConnectionError.describe(_errorCode as Number),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
             );
         }

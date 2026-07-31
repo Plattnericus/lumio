@@ -9,11 +9,27 @@ import Toybox.WatchUi;
 // albums (same model as the web app) show up here exactly as the account
 // has them configured - nothing about this menu is hardcoded per-user.
 class FilterMenuView extends WatchUi.Menu2 {
+    private var _loadStarted as Boolean;
+
     function initialize() {
         Menu2.initialize({ :title => "View" });
+        _loadStarted = false;
         addItem(new WatchUi.MenuItem("All Photos", null, :all, {}));
         addItem(new WatchUi.MenuItem("Favorites", null, :favorites, {}));
         addItem(new WatchUi.MenuItem("Loading albums...", null, :loadingAlbums, {}));
+    }
+
+    // Started here, not in initialize() - see ImageListView.onShow's
+    // comment for why: initialize() runs before the incoming view is
+    // actually shown, which is before whatever view it's replacing has
+    // its own onHide() (below) run its global cancelAllRequests(). Firing
+    // the fetch in initialize() meant that cancel call could wipe out the
+    // request this view had only just started.
+    function onShow() as Void {
+        if (_loadStarted) {
+            return;
+        }
+        _loadStarted = true;
         LumioApi.fetchAlbums(
             method(:onAlbumsLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
         );

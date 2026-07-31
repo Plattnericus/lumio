@@ -3,10 +3,16 @@ import Toybox.PersistedContent;
 import Toybox.WatchUi;
 
 class ImageListView extends WatchUi.Menu2 {
-    function initialize() {
+    // null = all photos; otherwise a scope filter Dictionary built by
+    // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
+    // "albumId" => n}), passed straight through to LumioApi.
+    function initialize(filter as Dictionary?) {
         Menu2.initialize({ :title => "Lumio Photos" });
         addItem(new WatchUi.MenuItem("Loading...", null, :loading, {}));
-        LumioApi.fetchImageList(method(:onImagesLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void);
+        LumioApi.fetchImageList(
+            filter,
+            method(:onImagesLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
+        );
     }
 
     function onImagesLoaded(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void {
@@ -32,7 +38,9 @@ class ImageListView extends WatchUi.Menu2 {
         for (var i = 0; i < images.size(); i++) {
             var entry = images[i] as Dictionary;
             var id = entry.get("id") as Number;
-            addItem(new WatchUi.MenuItem("Photo " + id.toString(), null, id, {}));
+            var name = entry.get("name") as String?;
+            var label = (name != null && name.length() > 0) ? name : ("Photo " + id.toString());
+            addItem(new WatchUi.MenuItem(label, null, id, {}));
         }
     }
 }

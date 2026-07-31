@@ -38,13 +38,29 @@ module LumioApi {
         Communications.makeWebRequest(url + "/api/health", null, options, callback);
     }
 
-    function fetchImageList(callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void) as Void {
+    // filter is null for "all photos", or a Dictionary matching the web
+    // API's own scope params - {"scope" => "favorites"} or {"scope" =>
+    // "album", "albumId" => n} - makeWebRequest serializes it into the
+    // query string itself for a GET request, no manual URL-building here.
+    function fetchImageList(
+        filter as Dictionary?,
+        callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
+    ) as Void {
         var options = {
             :method => Communications.HTTP_REQUEST_METHOD_GET,
             :headers => { "Authorization" => "Bearer " + (Storage.getValue("deviceToken") as String) },
             :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON,
         };
-        Communications.makeWebRequest(serverUrl() + "/api/garmin/images", null, options, callback);
+        Communications.makeWebRequest(serverUrl() + "/api/garmin/images", filter, options, callback);
+    }
+
+    function fetchAlbums(callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void) as Void {
+        var options = {
+            :method => Communications.HTTP_REQUEST_METHOD_GET,
+            :headers => { "Authorization" => "Bearer " + (Storage.getValue("deviceToken") as String) },
+            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON,
+        };
+        Communications.makeWebRequest(serverUrl() + "/api/garmin/albums", null, options, callback);
     }
 
     function fetchImage(id as Number, callback as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void) as Void {

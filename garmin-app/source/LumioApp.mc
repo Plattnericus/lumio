@@ -24,7 +24,7 @@ class LumioApp extends Application.AppBase {
 
         var token = Storage.getValue("deviceToken");
         if (token != null) {
-            return [new ImageListView(), new ImageListDelegate()] as [ WatchUi.Views, WatchUi.InputDelegates ];
+            return [new FilterMenuView(), new FilterMenuDelegate()] as [ WatchUi.Views, WatchUi.InputDelegates ];
         }
 
         var pairingView = new PairingView();

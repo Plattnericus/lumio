@@ -49,7 +49,7 @@ class PairingDelegate extends WatchUi.BehaviorDelegate {
     function onExchangeResponse(responseCode as Number, data as Dictionary?) as Void {
         if (responseCode == 200 && data != null && data.hasKey("token")) {
             Storage.setValue("deviceToken", data.get("token"));
-            WatchUi.switchToView(new ImageListView(), new ImageListDelegate(), WatchUi.SLIDE_IMMEDIATE);
+            WatchUi.switchToView(new FilterMenuView(), new FilterMenuDelegate(), WatchUi.SLIDE_IMMEDIATE);
         } else {
             _view.setStatus("That code didn't work.\nCheck it and try again.");
         }

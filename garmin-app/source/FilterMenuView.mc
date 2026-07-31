@@ -1,3 +1,4 @@
+import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.PersistedContent;
 import Toybox.WatchUi;
@@ -16,6 +17,13 @@ class FilterMenuView extends WatchUi.Menu2 {
         LumioApi.fetchAlbums(
             method(:onAlbumsLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
         );
+    }
+
+    // Same reasoning as ImageListView/FullscreenImageView - don't let an
+    // abandoned album-list fetch pile up against the next view's own
+    // request (Connect IQ limits parallel Communications requests).
+    function onHide() as Void {
+        Communications.cancelAllRequests();
     }
 
     function onAlbumsLoaded(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void {

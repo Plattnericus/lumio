@@ -1,3 +1,4 @@
+import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
@@ -41,6 +42,15 @@ class FullscreenImageView extends WatchUi.View {
             settings.screenHeight,
             method(:onImageLoaded) as Method(responseCode as Number, data as Graphics.BitmapReference?) as Void
         );
+    }
+
+    // Same reasoning as ImageListView's onHide: abandon this fetch if it's
+    // still in flight when the view is left, rather than letting it pile
+    // up against whatever the next view requests (Connect IQ limits
+    // parallel Communications requests, confirmed against the official
+    // docs' cancelAllRequests() description).
+    function onHide() as Void {
+        Communications.cancelAllRequests();
     }
 
     function onImageLoaded(responseCode as Number, data as Graphics.BitmapReference?) as Void {

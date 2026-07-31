@@ -3,6 +3,7 @@ import Toybox.Application.Storage;
 import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.PersistedContent;
 
 // Thin wrapper around the three endpoints this app ever calls. Server URL
 // and pairing code are both user-configured Connect IQ settings (entered
@@ -24,7 +25,7 @@ module LumioApi {
         Communications.makeWebRequest(serverUrl() + "/api/pairing/exchange", { "code" => code }, options, callback);
     }
 
-    function fetchImageList(callback as Method(responseCode as Number, data as Dictionary or Array or Null) as Void) as Void {
+    function fetchImageList(callback as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void) as Void {
         var options = {
             :method => Communications.HTTP_REQUEST_METHOD_GET,
             :headers => { "Authorization" => "Bearer " + (Storage.getValue("deviceToken") as String) },

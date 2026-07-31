@@ -2,7 +2,7 @@ import argon2 from "argon2";
 import { generate, generateSecret, generateURI, verify } from "otplib";
 import { db } from "../db/index.js";
 import { env } from "../config/env.js";
-import { deleteFile, listFiles as listUserFiles } from "./uploadService.js";
+import { listAllOwnedFiles, unlinkFileAssets } from "./uploadService.js";
 
 // Verified against a dummy hash when the username doesn't exist, so a login
 // attempt for a nonexistent account takes roughly the same time as one for
@@ -101,11 +101,18 @@ export function isLastAdmin(userId) {
 }
 
 // ON DELETE CASCADE removes the files/shares/tokens rows, but not the
-// actual bytes on disk - unlink those first via the same per-file
-// deleteFile() the files routes use, or they'd leak forever.
+// actual bytes on disk - unlink those first, or they'd leak forever.
+//
+// Deliberately uses listAllOwnedFiles (unfiltered by deleted_at) rather
+// than listFiles: an admin removing a user must hard-delete every owned
+// file's bytes regardless of trash state. This is a documented exception
+// to the soft-delete default introduced with trash - listFiles's
+// deleted_at IS NULL filter would otherwise silently skip trashed files
+// here, leaving their bytes orphaned on disk once the DB row vanishes via
+// cascade.
 export async function deleteUserAndFiles(userId) {
-  for (const file of listUserFiles(userId)) {
-    await deleteFile(file.id, userId);
+  for (const file of listAllOwnedFiles(userId)) {
+    await unlinkFileAssets(file);
   }
   deleteUserRow.run(userId);
 }

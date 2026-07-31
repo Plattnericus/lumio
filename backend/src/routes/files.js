@@ -4,8 +4,11 @@ import {
   deleteFile,
   filePath,
   listFiles,
+  listTrash,
   previewPath,
+  purgeFile,
   RejectedUploadError,
+  restoreFile,
   storeUpload,
   thumbnailPath,
 } from "../services/uploadService.js";
@@ -40,6 +43,8 @@ function toPublicFile(file) {
     // Only present for rows that came from the shared-with-me join -
     // the scope=mine path (the common case) does no join at all.
     ...(file.owner_username ? { sharedBy: file.owner_username, sharedAt: file.shared_at } : {}),
+    // Only present for trashed rows - a live file's deleted_at is NULL.
+    ...(file.deleted_at ? { deletedAt: file.deleted_at } : {}),
   };
 }
 
@@ -53,11 +58,24 @@ function handleShareError(err, res, next) {
 filesRouter.use(requireAuth);
 
 filesRouter.get("/", (req, res) => {
-  const files =
-    req.query.scope === "shared"
-      ? listFilesSharedWithMe(req.session.userId, req.query.type)
-      : listFiles(req.session.userId, req.query.type);
-  res.json(files.map(toPublicFile));
+  const { scope, type } = req.query;
+
+  if (scope === "shared") {
+    return res.json(listFilesSharedWithMe(req.session.userId, type).map(toPublicFile));
+  }
+
+  if (scope === "trash") {
+    // purgeAt is computed here, not baked into SQL - retention is
+    // configurable at runtime via env.trashRetentionDays, and the frontend
+    // must never hardcode its own copy of that number.
+    const files = listTrash(req.session.userId, type).map((file) => {
+      const pub = toPublicFile(file);
+      return { ...pub, purgeAt: pub.deletedAt + env.trashRetentionDays * 86400 };
+    });
+    return res.json(files);
+  }
+
+  res.json(listFiles(req.session.userId, type).map(toPublicFile));
 });
 
 filesRouter.post("/", csrfProtection, upload.single("file"), async (req, res, next) => {
@@ -103,10 +121,25 @@ filesRouter.get("/:id/preview", (req, res) => {
 });
 
 // Delete stays on the strict owner-only getFile/deleteFile - a file
-// shared with you is never yours to remove.
-filesRouter.delete("/:id", csrfProtection, async (req, res) => {
-  const deleted = await deleteFile(Number(req.params.id), req.session.userId);
+// shared with you is never yours to remove. This is a soft delete (moves
+// to trash) - the route shape is unchanged from before trash existed.
+filesRouter.delete("/:id", csrfProtection, (req, res) => {
+  const deleted = deleteFile(Number(req.params.id), req.session.userId);
   if (!deleted) return res.status(404).json({ error: "Not found" });
+  res.status(204).end();
+});
+
+// Trash round-trip: restore brings a soft-deleted file back to scope=mine;
+// /forever is the only path to an actual, irreversible delete.
+filesRouter.post("/:id/restore", csrfProtection, (req, res) => {
+  const restored = restoreFile(Number(req.params.id), req.session.userId);
+  if (!restored) return res.status(404).json({ error: "Not found" });
+  res.status(204).end();
+});
+
+filesRouter.delete("/:id/forever", csrfProtection, async (req, res) => {
+  const purged = await purgeFile(Number(req.params.id), req.session.userId);
+  if (!purged) return res.status(404).json({ error: "Not found" });
   res.status(204).end();
 });
 

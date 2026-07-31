@@ -34,14 +34,44 @@ const insertFile = db.prepare(
    VALUES (@ownerId, @originalName, @storedName, @mimeType, @extension, @sizeBytes, @hasThumbnail)
    RETURNING *`
 );
-const getFileForOwner = db.prepare("SELECT * FROM files WHERE id = ? AND owner_id = ?");
+// Every "live file" query below excludes deleted_at IS NOT NULL rows - a
+// trashed file must vanish from ownership lookups, listings, downloads,
+// everything, until it's restored. listAllOwnedFiles (further down) is the
+// deliberate exception, used only by account deletion.
+const getFileForOwner = db.prepare("SELECT * FROM files WHERE id = ? AND owner_id = ? AND deleted_at IS NULL");
 const listFilesForOwner = db.prepare(
-  "SELECT * FROM files WHERE owner_id = ? ORDER BY uploaded_at DESC"
+  "SELECT * FROM files WHERE owner_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC"
 );
 const listImagesForOwner = db.prepare(
-  "SELECT * FROM files WHERE owner_id = ? AND mime_type LIKE 'image/%' ORDER BY uploaded_at DESC"
+  "SELECT * FROM files WHERE owner_id = ? AND mime_type LIKE 'image/%' AND deleted_at IS NULL ORDER BY uploaded_at DESC"
 );
-const deleteFileRow = db.prepare("DELETE FROM files WHERE id = ? AND owner_id = ?");
+const listAllForOwner = db.prepare("SELECT * FROM files WHERE owner_id = ?");
+
+const softDeleteFile = db.prepare(
+  "UPDATE files SET deleted_at = unixepoch() WHERE id = ? AND owner_id = ? AND deleted_at IS NULL"
+);
+const restoreFileRow = db.prepare(
+  "UPDATE files SET deleted_at = NULL WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL"
+);
+const getTrashedFileForOwner = db.prepare(
+  "SELECT * FROM files WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL"
+);
+const purgeFileRow = db.prepare("DELETE FROM files WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL");
+const listTrashForOwner = db.prepare(
+  "SELECT * FROM files WHERE owner_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+);
+const listTrashImagesForOwner = db.prepare(
+  "SELECT * FROM files WHERE owner_id = ? AND mime_type LIKE 'image/%' AND deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+);
+// System-wide sweep, no owner filter - retentionSeconds is bound as a
+// parameter rather than interpolated so retention stays configurable
+// without touching the prepared statement itself.
+const listExpiredTrash = db.prepare(
+  "SELECT * FROM files WHERE deleted_at IS NOT NULL AND deleted_at < unixepoch() - ?"
+);
+const deleteExpiredTrash = db.prepare(
+  "DELETE FROM files WHERE deleted_at IS NOT NULL AND deleted_at < unixepoch() - ?"
+);
 
 export class RejectedUploadError extends Error {
   constructor(message) {
@@ -125,15 +155,70 @@ export function previewPath(file) {
   return path.join(previewDir, `${file.stored_name}.jpg`);
 }
 
-export async function deleteFile(id, ownerId) {
-  const file = getFileForOwner.get(id, ownerId);
+// Soft delete only - marks the row trashed, never touches disk bytes.
+// The route shape (DELETE /api/files/:id -> 204/404) is unchanged, so the
+// frontend's existing delete button needs zero changes; what changed is
+// that the file is now recoverable via restoreFile until purgeFile (or
+// purgeExpiredTrash) actually removes it.
+export function deleteFile(id, ownerId) {
+  const result = softDeleteFile.run(id, ownerId);
+  return result.changes > 0;
+}
+
+// Reverses deleteFile - only succeeds while the file is actually trashed.
+export function restoreFile(id, ownerId) {
+  const result = restoreFileRow.run(id, ownerId);
+  return result.changes > 0;
+}
+
+// The *old* deleteFile body: unlink original+thumbnail+preview from disk,
+// then really delete the row. Gated on the file already being trashed -
+// permanent purge is only ever reachable from the trash view.
+export async function purgeFile(id, ownerId) {
+  const file = getTrashedFileForOwner.get(id, ownerId);
   if (!file) return false;
 
-  deleteFileRow.run(id, ownerId);
+  purgeFileRow.run(id, ownerId);
+  await unlinkFileAssets(file);
+  return true;
+}
+
+// Disk-unlink logic factored out with no DB write, so callers that already
+// have the row (purgeFile, purgeExpiredTrash, deleteUserAndFiles) don't
+// each re-derive it.
+export async function unlinkFileAssets(file) {
   await Promise.all([
     fs.unlink(filePath(file)).catch(() => {}),
     file.has_thumbnail ? fs.unlink(thumbnailPath(file)).catch(() => {}) : Promise.resolve(),
     file.has_thumbnail ? fs.unlink(previewPath(file)).catch(() => {}) : Promise.resolve(),
   ]);
-  return true;
+}
+
+export function listTrash(ownerId, type) {
+  const rows = type === "image" ? listTrashImagesForOwner.all(ownerId) : listTrashForOwner.all(ownerId);
+  if (type && type !== "image") {
+    return rows.filter((row) => row.extension === type);
+  }
+  return rows;
+}
+
+// Every owned file regardless of trash state - deliberately unfiltered by
+// deleted_at, unlike listFiles. Exists specifically so deleteUserAndFiles
+// can still account for (and unlink the disk bytes of) trashed files too,
+// since listFiles would otherwise silently exclude them.
+export function listAllOwnedFiles(ownerId) {
+  return listAllForOwner.all(ownerId);
+}
+
+// System-wide sweep, no owner filter - called from the in-process
+// scheduler (lib/trashCleanup.js) and the standalone purge-trash.js
+// script. Returns the number of files actually purged.
+export async function purgeExpiredTrash(retentionDays) {
+  const retentionSeconds = retentionDays * 86400;
+  const expired = listExpiredTrash.all(retentionSeconds);
+  for (const file of expired) {
+    await unlinkFileAssets(file);
+  }
+  deleteExpiredTrash.run(retentionSeconds);
+  return expired.length;
 }

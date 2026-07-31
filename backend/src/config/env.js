@@ -4,6 +4,11 @@ import "dotenv/config";
 const required = ["SESSION_SECRET"];
 
 function readEnv() {
+  // Computed up front (rather than read back off `env.nodeEnv`, which
+  // doesn't exist as a bound name until this whole object literal has
+  // finished evaluating) so the WebAuthn defaults below can branch on it.
+  const isProd = (process.env.NODE_ENV || "development") === "production";
+
   const env = {
     nodeEnv: process.env.NODE_ENV || "development",
     port: Number(process.env.PORT || 3000),
@@ -17,6 +22,17 @@ function readEnv() {
     loginRateLimitMax: Number(process.env.LOGIN_RATE_LIMIT_MAX || 5),
     loginLockoutMinutes: Number(process.env.LOGIN_LOCKOUT_MINUTES || 15),
     pairingCodeTtlMinutes: Number(process.env.PAIRING_CODE_TTL_MINUTES || 10),
+    trashRetentionDays: Number(process.env.TRASH_RETENTION_DAYS || 30),
+    sessionMaxAgeDays: Number(process.env.SESSION_MAX_AGE_DAYS || 30),
+    webauthnRpId: process.env.WEBAUTHN_RP_ID || (isProd ? undefined : "localhost"),
+    webauthnRpName: process.env.WEBAUTHN_RP_NAME || "Lumio",
+    webauthnOrigin: process.env.WEBAUTHN_ORIGIN || (isProd ? undefined : "http://localhost:5173"),
+    // Reserved for a future Duo Security integration - unread by any code
+    // path today. A later PR will document exactly where this plugs into
+    // the login flow once real Duo account credentials exist.
+    duoIntegrationKey: process.env.DUO_INTEGRATION_KEY,
+    duoSecretKey: process.env.DUO_SECRET_KEY,
+    duoApiHostname: process.env.DUO_API_HOSTNAME,
     // Express's trust-proxy subnets, comma-separated (accepts "loopback",
     // "linklocal", "uniquelocal", or CIDR ranges). Only nginx talks to this
     // process by default (loopback) - add the reverse proxy chain's own

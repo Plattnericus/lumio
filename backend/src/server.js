@@ -4,8 +4,10 @@ import { db } from "./db/index.js";
 import { env } from "./config/env.js";
 import { logger } from "./logger.js";
 import { ensureSetupToken } from "./services/setupTokenService.js";
+import { startTrashCleanupSchedule } from "./lib/trashCleanup.js";
 
 ensureSetupToken();
+startTrashCleanupSchedule();
 
 const app = createApp();
 const server = http.createServer(app);

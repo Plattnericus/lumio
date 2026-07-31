@@ -15,17 +15,20 @@ const sharesForFile = db.prepare(`
   WHERE file_shares.file_id = ?
   ORDER BY file_shares.created_at
 `);
+// Both queries below add "files.deleted_at IS NULL" - this is what makes a
+// trashed file vanish from every access path (owner and recipient alike)
+// and from "shared with me" until it's restored.
 const sharedWithMe = db.prepare(`
   SELECT files.*, owner.username as owner_username, file_shares.created_at as shared_at
   FROM files
   JOIN file_shares ON file_shares.file_id = files.id
   JOIN users owner ON owner.id = files.owner_id
-  WHERE file_shares.shared_with_user_id = ?
+  WHERE file_shares.shared_with_user_id = ? AND files.deleted_at IS NULL
   ORDER BY file_shares.created_at DESC
 `);
 const accessibleFile = db.prepare(`
   SELECT * FROM files
-  WHERE id = ? AND (
+  WHERE id = ? AND deleted_at IS NULL AND (
     owner_id = ?
     OR EXISTS (SELECT 1 FROM file_shares WHERE file_id = files.id AND shared_with_user_id = ?)
   )

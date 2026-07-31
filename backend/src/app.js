@@ -49,11 +49,23 @@ export function createApp() {
       secret: env.sessionSecret,
       resave: false,
       saveUninitialized: false,
+      // Rolling + a long-ish maxAge is standard "stay logged in" behavior -
+      // reasonable given argon2id + TOTP/passkeys + account lockout already
+      // guard the login itself. There's no "view/revoke other active
+      // sessions" UI today; this doesn't add one either - that's a known,
+      // pre-existing gap, not something newly introduced here. This is only
+      // safe because better-sqlite3-session-store's `touch(sid, session, cb)`
+      // (confirmed by reading its source) actually updates the persisted
+      // `expire` column on every request, not just the Set-Cookie header -
+      // otherwise the store's own 15-minute expired-session sweep above
+      // could prune an active session out from under the user even while
+      // the browser's cookie still looked unexpired.
+      rolling: true,
       cookie: {
         httpOnly: true,
         secure: isProduction,
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: env.sessionMaxAgeDays * 24 * 60 * 60 * 1000,
       },
     })
   );

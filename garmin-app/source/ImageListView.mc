@@ -9,13 +9,15 @@ class ImageListView extends WatchUi.Menu2 {
     // limits how many Communications requests can be active in parallel
     // (confirmed against the official docs' own cancelAllRequests()
     // description), and firing one per row simultaneously blew right
-    // past that, which is what caused occasional stuck loads and spurious
-    // 404s when navigating back and forth. Each entry is [id, item];
-    // _currentThumbnailItem tracks whichever one is actually in flight.
+    // past that. Each entry is [id, item]; _currentThumbnailItem tracks
+    // whichever one is actually in flight.
     private var _thumbnailQueue as Array<[Number, WatchUi.MenuItem]>;
     private var _currentThumbnailItem as WatchUi.MenuItem?;
     private var _filter as Dictionary?;
-    private var _loadStarted as Boolean;
+    // Menu2 only exposes deleteItem(index), not a bulk clear - this
+    // tracks how many items are currently added so reload() can remove
+    // exactly that many via repeated deleteItem(0) calls.
+    private var _itemCount as Number;
 
     // null = all photos; otherwise a scope filter Dictionary built by
     // FilterMenuDelegate ({"scope" => "favorites"} or {"scope" => "album",
@@ -25,28 +27,33 @@ class ImageListView extends WatchUi.Menu2 {
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
         _currentThumbnailItem = null;
         _filter = filter;
-        _loadStarted = false;
-        addItem(new WatchUi.MenuItem("Loading...", null, :loading, {}));
+        _itemCount = 0;
+        addLoadingItem();
     }
 
-    // The actual fetch starts here, not in initialize() - this view's
-    // constructor runs (and used to fire the fetch) *before*
-    // WatchUi.pushView actually swaps views, which is also before the
-    // previous view's own onHide() runs. Since onHide() below cancels
-    // every outstanding request (Communications.cancelAllRequests() is
-    // global, not scoped to one view), starting the fetch in initialize()
-    // meant the previous view's onHide() immediately cancelled the
-    // request this view had just started - surfaced as "Request was
-    // cancelled (-1003)" on literally every navigation into this view.
-    // onShow() only runs after the outgoing view's onHide() has already
-    // fired, so there's nothing left to cancel by the time this starts.
-    // _loadStarted guards against onShow() firing again later (e.g.
-    // returning from a fullscreen photo) and re-fetching from scratch.
+    private function addLoadingItem() as Void {
+        addItem(new WatchUi.MenuItem("Loading...", null, :loading, {}));
+        _itemCount += 1;
+    }
+
+    // Reloads from scratch every time this view becomes visible - both
+    // the first time (right after construction) and every time it's
+    // revealed again (backing out of a fullscreen photo). Refreshing on
+    // every return matters: without it, a photo that gets favorited,
+    // trashed, or deleted via the web dashboard while you're browsing on
+    // the watch would keep showing as a valid row indefinitely - tapping
+    // it would 404 every time, with no way to recover short of
+    // restarting the app. This also runs after the outgoing view's
+    // onHide() has already fired (see that comment below), so there's
+    // nothing left over to cancel this fetch.
     function onShow() as Void {
-        if (_loadStarted) {
-            return;
+        while (_itemCount > 0) {
+            deleteItem(0);
+            _itemCount -= 1;
         }
-        _loadStarted = true;
+        _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
+        _currentThumbnailItem = null;
+        addLoadingItem();
         LumioApi.fetchImageList(
             _filter,
             method(:onImagesLoaded) as Method(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void
@@ -56,7 +63,7 @@ class ImageListView extends WatchUi.Menu2 {
     // However this view stops being the visible one - backing out, or a
     // FullscreenImageView getting pushed on top - abandon anything still
     // in flight so it doesn't pile up against whatever request the next
-    // view makes.
+    // view makes (Connect IQ limits parallel Communications requests).
     function onHide() as Void {
         Communications.cancelAllRequests();
         _thumbnailQueue = [] as Array<[Number, WatchUi.MenuItem]>;
@@ -65,9 +72,11 @@ class ImageListView extends WatchUi.Menu2 {
 
     function onImagesLoaded(responseCode as Number, data as Dictionary or String or PersistedContent.Iterator or Null) as Void {
         deleteItem(0);
+        _itemCount -= 1;
 
         if (responseCode != 200 || data == null) {
             addItem(new WatchUi.MenuItem("Couldn't load photos", ConnectionError.describe(responseCode), :error, {}));
+            _itemCount += 1;
             return;
         }
 
@@ -80,6 +89,7 @@ class ImageListView extends WatchUi.Menu2 {
         var images = data as Array;
         if (images.size() == 0) {
             addItem(new WatchUi.MenuItem("No photos yet", null, :empty, {}));
+            _itemCount += 1;
             return;
         }
 
@@ -90,6 +100,7 @@ class ImageListView extends WatchUi.Menu2 {
             var label = (name != null && name.length() > 0) ? name : ("Photo " + id.toString());
             var item = new WatchUi.MenuItem(label, null, id, {});
             addItem(item);
+            _itemCount += 1;
             _thumbnailQueue.add([id, item] as [Number, WatchUi.MenuItem]);
         }
 

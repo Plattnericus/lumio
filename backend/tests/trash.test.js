@@ -1,7 +1,8 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import sharp from "sharp";
 
@@ -238,5 +239,68 @@ describe("purgeExpiredTrash", () => {
 
     expect(db.prepare("SELECT COUNT(*) as count FROM files WHERE id = ?").get(recentFileId).count).toBe(1);
     expect(fs.existsSync(recentPaths.original)).toBe(true);
+  });
+
+  // Regression test for a TOCTOU gap: purgeExpiredTrash used to SELECT the
+  // expired rows, unlink their disk assets in an awaited loop, and only
+  // then run a separate DELETE. A restore landing in the gap between the
+  // SELECT and a given row's unlink would flip deleted_at back to NULL -
+  // the later DELETE (which re-checks deleted_at) would correctly leave
+  // that row's DB record alone, but the loop had already unlinked its
+  // bytes, leaving a "restored" file with no content behind it. The fix
+  // (a single DELETE ... RETURNING) makes the decision-and-removal step
+  // atomic and synchronous, so nothing can restore a row after it's been
+  // selected for purge but before it's actually removed.
+  it("never leaves a file that raced a restore against the sweep as a DB row with its bytes already gone", async () => {
+    const { purgeExpiredTrash, restoreFile } = await import("../src/services/uploadService.js");
+
+    const fileAId = await uploadTestFile(ownerAgent, ownerCsrf, "race-a.png");
+    const fileBId = await uploadTestFile(ownerAgent, ownerCsrf, "race-b.png");
+
+    await ownerAgent.delete(`/api/files/${fileAId}`).set("X-CSRF-Token", ownerCsrf);
+    await ownerAgent.delete(`/api/files/${fileBId}`).set("X-CSRF-Token", ownerCsrf);
+
+    const farPast = Math.floor(Date.now() / 1000) - 90 * 86400;
+    db.prepare("UPDATE files SET deleted_at = ? WHERE id IN (?, ?)").run(farPast, fileAId, fileBId);
+
+    const ownerId = db.prepare("SELECT owner_id FROM files WHERE id = ?").get(fileAId).owner_id;
+    const pathsA = storedPathsFor(fileAId);
+    const pathsB = storedPathsFor(fileBId);
+
+    let restoreAttemptResult;
+    const realUnlink = fsPromises.unlink.bind(fsPromises);
+    const spy = vi.spyOn(fsPromises, "unlink").mockImplementation(async (target) => {
+      // On the very first disk unlink the sweep performs (for whichever
+      // file it processes first), simulate a restore request for the
+      // *other* file in this same expired batch landing at that exact
+      // moment - the real-world window this bug lived in.
+      if (restoreAttemptResult === undefined) {
+        const otherFileId = String(target) === pathsA.original ? fileBId : fileAId;
+        restoreAttemptResult = restoreFile(otherFileId, ownerId);
+      }
+      return realUnlink(target);
+    });
+
+    let purgedCount;
+    try {
+      purgedCount = await purgeExpiredTrash(30);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(purgedCount).toBe(2);
+
+    // The race-restore attempt must fail cleanly (false / no rows
+    // affected) rather than "succeed" against a row whose bytes are
+    // already gone - by the time any unlinking starts, the atomic DELETE
+    // has already removed every row in this batch from the DB.
+    expect(restoreAttemptResult).toBe(false);
+
+    // Both files end up fully, consistently purged - never a DB row that
+    // survived with its disk bytes missing underneath it.
+    expect(db.prepare("SELECT COUNT(*) as count FROM files WHERE id = ?").get(fileAId).count).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) as count FROM files WHERE id = ?").get(fileBId).count).toBe(0);
+    expect(fs.existsSync(pathsA.original)).toBe(false);
+    expect(fs.existsSync(pathsB.original)).toBe(false);
   });
 });

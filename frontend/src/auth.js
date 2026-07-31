@@ -24,9 +24,6 @@ export function mountLogin(root, onSuccess) {
                 </div>
               `
               : `
-                <p style="color:var(--text-1);font-size:0.85rem;margin:0 0 16px;">
-                  Enter the 6-digit code from your authenticator app.
-                </p>
                 <div class="field">
                   <label for="totp">Authentication code</label>
                   <input id="totp" name="totp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required />

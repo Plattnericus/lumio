@@ -8,14 +8,13 @@ export function mountSetup(root, onSuccess) {
     root.innerHTML = `
       <div class="login-card wide glass">
         <div class="brand">${iconBrand}<span>Lumio</span></div>
-        <p class="lede">Welcome. This is the first time Lumio has been opened - create the
-          admin account to get started. You'll be able to add more accounts afterward.</p>
+        <p class="lede">Create the admin account to get started.</p>
         <form id="setup-form">
           <div class="field">
             <label for="setup-username">Username</label>
             <input id="setup-username" name="username" type="text" autocomplete="username"
               pattern="[a-zA-Z0-9._-]{3,32}" maxlength="32" required />
-            <div class="field-hint">3-32 characters: letters, numbers, dots, hyphens, or underscores. This is what you'll type to sign in.</div>
+            <div class="field-hint">3-32 characters: letters, numbers, dots, hyphens, or underscores.</div>
           </div>
           <div class="field">
             <label for="setup-password">Password</label>
@@ -36,7 +35,7 @@ export function mountSetup(root, onSuccess) {
             <label for="setup-token">Setup token</label>
             <input id="setup-token" name="setupToken" type="text" autocomplete="off" required />
             <div class="field-hint">
-              ${iconKey} One-time token printed when Lumio was installed. On the server: <code>cat &lt;SETUP_TOKEN_PATH&gt;</code>
+              ${iconKey} On the server: <code>cat &lt;SETUP_TOKEN_PATH&gt;</code>
             </div>
           </div>
           <p class="error-text" id="setup-error"></p>
